@@ -141,6 +141,22 @@ symbol rather than by exit code: 7 spectrum symbols in the ELF (`TxSpectrumStart
 > *after* `firmware.bin` is written; the image is complete. CI has no tty and takes the
 > "leaving the firmware bare" branch, so it does not prompt. Locally, pipe: `echo "" | pio run`.
 
+**Boxer internal re-verified on the PR branch: ✅ PASSED (2026-07-21).** Flashed
+`test_bins/boxer-2400-pr.bin`, built from `tx-spectrum-pr` with `-DTX_SPECTRUM_SCAN
+-DRegulatory_Domain_ISM_2400` and the `radiomaster.tx_2400.boxer` layout (`radio_busy: 21`, no
+second radio — i.e. genuinely the **single-radio** sweep topology, confirmed from the embedded
+layout before flashing rather than assumed). Flash 82.2%, `wifi-on-interval: -1`.
+
+This is the **first SX128x validation on the 4.1.0 base** — all prior SX1280 evidence is 4.0.1-era
+— and the first on the split branch for any target other than the Nomad.
+
+> **Recorded as user-reported and not itemized.** The spot-check list put to the user was: folder
+> opens and the plot renders with the trace varying across bins; the CW tone lands on the
+> **2440.4 MHz** bin reading `2440.4MHz`; and R3.2 — RX at zero packets and failsafe for the whole
+> scan, re-linking on reboot-exit. The reply was "boxer verified" without a per-check breakdown, so
+> this entry deliberately does not claim individual pass records the way the N-series entries do.
+> Itemize before leaning on it as PR evidence.
+
 **Nomad hardware bring-up on 4.1.0:**
 - ✅ **N2 PASSED (2026-07-18):** trace varies on **both** bands (Config/SetMode trap cleared on
   each -> band-matched-radio routing confirmed, r1=sub-GHz / r2=2.4); paired RX **failsafes on

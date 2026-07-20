@@ -1358,7 +1358,7 @@ and dwells for seconds.
 |---|---|---|---|---|---|
 | **RadioMaster Nomad** | dual LR1121 | 900 + 2.4 | cross-band | ✅ N0–N5, 4.1.0 | ✅ 2026-07-20 |
 | **BETAFPV SuperG** | dual SX1280 | 2.4 | Gemini split | ✅ P0–P5, **4.0.1** | n/a — LR1121 only |
-| **RadioMaster Boxer** internal | single SX1280 | 2.4 | single-radio | ✅ brought up, **4.1.0** | n/a — LR1121 only |
+| **RadioMaster Boxer** internal | single SX1280 | 2.4 | single-radio | ✅ brought up **4.1.0**; ✅ re-verified on **`tx-spectrum-pr`** 2026-07-21 | n/a — LR1121 only |
 
 > **Provenance, corrected 2026-07-20.** An earlier version of this table credited the Boxer
 > internal with "P0–P5, 4.0.1". That was a misreading of STATUS.md's phase table, whose third
@@ -1368,10 +1368,12 @@ and dwells for seconds.
 > session). The scope of that bring-up was not recorded phase-by-phase, so it is stated here as
 > bring-up rather than as a P0–P5 equivalent.
 >
-> **Neither SX1280 target has been validated against the 4.1.0 PR branch itself.** The SuperG's
-> evidence is 4.0.1-era; the Boxer's predates the split. The TX firmware is byte-identical between
+> **PR-branch verification, 2026-07-21.** The Boxer internal has now been re-verified against
+> `tx-spectrum-pr` itself, closing the single-radio topology on the branch that ships. The SuperG
+> (Gemini split) is in progress. The TX firmware is byte-identical between
 > `tx-spectrum-nomad-4.1.0` and `tx-spectrum-pr` — the only delta is removing an unused enum
-> member — so no behaviour change is expected, but "expected" is not "verified".
+> member — so the SuperG's 4.0.1-era evidence is expected to carry, but "expected" is not
+> "verified" and the table says so until it is.
 
 Off-hardware gates: `pio test -e native -f test_txspectrum -f test_spectrum` (24/24) and
 `lua/mockup/simcheck.py`.
