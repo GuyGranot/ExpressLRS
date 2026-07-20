@@ -68,6 +68,41 @@ flag-off images 1,694,848 B, only the two SHA-256 blocks differ (app_elf_sha256 
 image hash); masked, byte-identical. Flag-off ships stock 4.1.0. Same method/caveat as the
 4.0.1 N0 (see the 4.0.1 section below).
 
+**N0 re-run on the split PR branch (`tx-spectrum-pr`, HEAD `6cd2b6b0`): ✅ PASSED
+(2026-07-20).** The earlier N0 was proven on `tx-spectrum-nomad-4.1.0`, which also carried the
+RX scanner; the PR branch is a different tree, so the proof was re-run from scratch rather than
+inherited.
+
+Method as before: build `Unified_ESP32_LR1121_TX_via_ETX` twice **at the same HEAD** — once with
+the feature files present and the flag off (`super_defines.txt` reduced to the domain and binding
+phrase), once with the 10 TX-compiled shared files reverted to stock `a9d4a9cb` and `lib/TxSpectrum`
+moved out of the tree. Both builds at HEAD so the baked git-version string is identical, and
+`flash-discriminator` (`build_flags.py:137`) pinned, since it is otherwise `randint()` per build.
+
+**Result: 1,697,536 B both. 65 of 1,697,536 bytes differ (0.0038%), and every one of them is a
+derived value — zero code or data bytes differ.** Masking the three regions makes the images
+byte-identical.
+
+The 65 bytes are a single causal chain, not three independent discrepancies:
+
+| Region | Offset | Bytes | Why it differs |
+|---|---|---|---|
+| `app_elf_sha256` | `0xB0..0xCF` | 32 | The **ELF** carries symbol/debug entries for the feature's source files; those are stripped from the flashed `.bin`, so the hash of the ELF differs while the image does not. |
+| ESP image checksum | `0x19DC4F` | 1 | XOR over segment data — and the 32 hash bytes above *are* segment data, sitting in the app descriptor. |
+| Appended SHA-256 | `0x19DC50..0x19DC6F` | 32 | Covers everything above it. Verified: it equals `sha256(image[:hash])`. |
+
+**Correction to the 4.0.1-era record below, which described the second hash as "the last 32 B" of
+the file.** It is not at the end: the build appends 2,704 bytes of configuration after the ESP
+image proper, so the hash sits at `0x19DC50`, 1,201 B from EOF. Locating it requires parsing the
+image (magic `0xE9`, 6 segments, `hash_appended=1` at offset 23, pad-to-16, checksum byte, hash).
+That record also omitted the checksum byte, counting "two SHA-256 blocks" while reporting ~65
+bytes — the arithmetic only closes with the checksum included. A masking script that assumes
+`len-32` will report 33 unexplained bytes and look like a **failure** when the build has in fact
+passed.
+
+Segment-data differences: **32, all inside `app_elf_sha256`.** Appended build-config differences:
+**0.**
+
 **Nomad hardware bring-up on 4.1.0:**
 - ✅ **N2 PASSED (2026-07-18):** trace varies on **both** bands (Config/SetMode trap cleared on
   each -> band-matched-radio routing confirmed, r1=sub-GHz / r2=2.4); paired RX **failsafes on
@@ -195,8 +230,8 @@ wrapper in `LR1121.h`.
   shape: nearest bin is 40 at 2440.4 MHz. **This is the check that mattered** — a per-bin AGC
   reset could have fixed the floor while blunting real-signal response, and it did not.
 
-**Still owed:** N2 (per-bin variation both bands), band flip, N4 arm guard, and the N0
-flag-off byte-identity proof.
+**Still owed:** N2 (per-bin variation both bands), band flip, and N4 arm guard. The N0
+flag-off byte-identity proof is closed — re-run on the `tx-spectrum-pr` branch, see below.
 
 **Axis label — now one decimal (2026-07-20).** Fixed in two steps, and the first step was
 not enough.
