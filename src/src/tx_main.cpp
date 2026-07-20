@@ -21,6 +21,7 @@
 #include "devGsensor.h"
 #include "devThermal.h"
 #include "devPDET.h"
+#include "TxSpectrum.h"
 #include "devBackpack.h"
 #else
 // Fake functions for 8285
@@ -114,6 +115,17 @@ device_affinity_t ui_devices[] = {
   {&Thermal_device, 0},
   {&PDET_device, 0},
 #endif
+#endif
+#if defined(TX_SPECTRUM_SCAN)
+  // Ticked by devicesUpdate() in loop(), which runs ABOVE the
+  // "connectionState > MODE_STATES" early return -- that is the only seam where
+  // work can happen while the link is intentionally down. See DESIGN.md 3.2.
+  //
+  // Affinity 1 (loop core) is load-bearing: this device returns
+  // DURATION_IMMEDIATELY while sweeping, and on core 0 deviceTask() would turn
+  // that into a non-blocking xSemaphoreTake, busy-spinning a core whose WDT is
+  // disabled and starving its idle task.
+  {&TxSpectrum_device, 1},
 #endif
   {&VTX_device, 0}
 };
@@ -734,6 +746,14 @@ static void UARTconnected()
     setConnectionState(awaitingModelId);
   }
   // But start the timer to get OpenTX sync going and a ModelID update sent
+#if defined(TX_SPECTRUM_SCAN)
+  // Not during a sweep. Note this resume() is deliberately outside the
+  // connectionState test above -- it runs unconditionally on every handset
+  // (re)connect, e.g. after a baud change -- so a scan needs its own guard here
+  // even though the setConnectionState() above already skips it. Exit is by
+  // reboot, which re-runs this path normally.
+  if (connectionState == spectrumScan) return;
+#endif
   hwTimer::resume();
 }
 
@@ -982,6 +1002,17 @@ void OnPowerSetCalibration(mspPacket_t *packet)
     DBGLN("calibration error index %d out of range", index);
     return;
   }
+#if defined(TX_SPECTRUM_SCAN)
+  // Refuse outright rather than guard only the resume() below: the delay(20)
+  // would stall the sweep, the cali write cannot commit during a scan anyway
+  // (> NO_CONFIG_SAVE_STATES), and the resume() would transmit into a retuning
+  // radio. Calibrating power mid-sweep is not a thing anyone means to do.
+  if (connectionState == spectrumScan)
+  {
+    DBGLN("power calibration refused: spectrum scan in progress");
+    return;
+  }
+#endif
   hwTimer::stop();
   delay(20);
 
@@ -1006,6 +1037,27 @@ static void EnterBindingMode()
 {
   if (InBindingMode)
       return;
+
+#if defined(TX_SPECTRUM_SCAN)
+  // A spectrum sweep owns the radio and drives its SPI from the loop core, and
+  // this function ends in hwTimer::resume() -- which would transmit into a radio
+  // the sweep is concurrently retuning, at the PRE-scan power (setPower only
+  // queues pwrPending; the commit runs from TXnbISR, the TX-*done* ISR). A
+  // stopped hwTimer is the only thing suppressing TX in a mode state, so this is
+  // not theoretical.
+  //
+  // The guard belongs HERE, not in EnterBindingModeSafely(), because the button
+  // bypasses that wrapper: tx_main.cpp registers ACTION_BIND against *this*
+  // function directly, while rx_main.cpp registers the Safely variant. Guarding
+  // only the wrapper would cover the Lua/CRSF/menu paths -- which a running scan
+  // already blocks, since the plot owns the handset screen -- and miss the one
+  // path a user can actually reach mid-scan. See lib/TxSpectrum/DESIGN.md 9.5.
+  if (connectionState == spectrumScan)
+  {
+    DBGLN("bind refused: spectrum scan in progress");
+    return;
+  }
+#endif
 
   // Disable the TX timer and wait for any TX to complete
   hwTimer::stop();
@@ -1050,6 +1102,7 @@ static void ExitBindingMode()
 void EnterBindingModeSafely()
 {
   // TX can always enter binding mode safely as the function handles stopping the transmitter
+  // (and, under TX_SPECTRUM_SCAN, refusing outright during a sweep -- see there).
   EnterBindingMode();
 }
 

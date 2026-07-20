@@ -46,6 +46,23 @@ typedef enum
     NO_CONFIG_SAVE_STATES,
     wifiUpdate,
     serialUpdate,
+#if defined(TX_SPECTRUM_SCAN)
+    // Receive-only spectrum sweep; halts the link, exits by reboot. Placed here
+    // so it is > MODE_STATES (halt RF), > NO_CONFIG_SAVE_STATES (block config
+    // commits) and < FAILURE_STATES (not a fault) -- i.e. identical semantics to
+    // wifiUpdate -- while renumbering the fewest existing states. See
+    // lib/TxSpectrum/DESIGN.md 3.1.
+    //
+    // Being *after* serialUpdate is load-bearing for a reason the sentinels do
+    // not cover: devWIFI.cpp compares against a named state as an ordinal
+    // ("connectionState < wifiUpdate"), not against a sentinel. Inserting
+    // anywhere above wifiUpdate would shift its value and silently change what
+    // that test means for auto-WiFi-on-boot. Only FAILURE_STATES, radioFailed
+    // and hardwareUndefined shift here, and every use of those three is a
+    // symbolic comparison within one image (connectionState is never
+    // serialised -- DESIGN.md R2.3).
+    spectrumScan,
+#endif
     // Failure states go below here to display immediately
     FAILURE_STATES,
     radioFailed,

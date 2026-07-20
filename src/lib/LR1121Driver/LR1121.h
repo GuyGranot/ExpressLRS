@@ -55,6 +55,14 @@ public:
 
     void StartRssiInst(SX12XX_Radio_Number_t radioNumber);
     int8_t GetRssiInst(SX12XX_Radio_Number_t radioNumber);
+#if defined(TX_SPECTRUM_SCAN)
+    // Drop out of RX so the next RX entry restarts the receiver from scratch,
+    // clearing whatever gain/detect state the AGC was holding. The sweep needs
+    // this because RX_CONT never self-exits: a gain step chosen for one bin
+    // otherwise carries into every bin after it. SetMode is private, hence this
+    // wrapper; gated so the flag-off image is untouched (N0).
+    void SpectrumResetRx(SX12XX_Radio_Number_t radioNumber) { SetMode(LR1121_MODE_STDBY_RC, radioNumber); }
+#endif
     void GetLastPacketStats();
     void CheckForSecondPacket();
 

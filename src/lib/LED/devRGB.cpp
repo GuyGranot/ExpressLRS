@@ -258,6 +258,9 @@ constexpr uint8_t LEDSEQ_NO_CROSSFIRE[] = {  10, 100 }; // 1 blink, 1s pause (on
 constexpr uint8_t LEDSEQ_BINDING[] = { 10, 10, 10, 100 };   // 2x 100ms blink, 1s pause
 constexpr uint8_t LEDSEQ_MODEL_MISMATCH[] = { 10, 10, 10, 10, 10, 100 };   // 3x 100ms blink, 1s pause
 constexpr uint8_t LEDSEQ_UPDATE[] = { 20, 5, 5, 5, 5, 40 };   // 200ms on, 2x 50ms off/on, 400ms off
+#if defined(TX_SPECTRUM_SCAN)
+constexpr uint8_t LEDSEQ_SPECTRUM_SCAN[] = { 5, 5, 5, 5, 5, 50 };   // 3x 50ms blink, 500ms pause
+#endif
 
 #define NORMAL_UPDATE_INTERVAL 50
 
@@ -451,6 +454,26 @@ static int timeout()
     case bleJoystick:
         hueFadeLED(blinkyColor, 170, 170+30, 128, 2);    // Blue cross-fade
         return 5;
+#if defined(TX_SPECTRUM_SCAN)
+    case spectrumScan:
+        // A crisp blink pattern, NOT a fade -- and the rhythm is what carries the
+        // meaning, not the colour. Two reasons, both learned on the bench:
+        //
+        //  - No fixed hue can mean "scanning". `connected`/`tentative`/`disconnected`
+        //    all derive theirs from `index * 256 / RATE_MAX`, which sweeps nearly the
+        //    whole wheel, so any constant we pick is some packet rate's colour too.
+        //    (wifiUpdate's 85 and bleJoystick's 170 have the same latent clash; they
+        //    just rarely coincide with a rate you happen to run.)
+        //  - A dropped link -- e.g. right after a Bind -- shows as `disconnected`,
+        //    which on the TX is brightnessFadeLED() at that rate hue. A hue fade
+        //    against a brightness fade in a similar colour is genuinely ambiguous;
+        //    a blink against either is not.
+        //
+        // Magenta is still a decent hint (nothing else here flashes near it), but it
+        // is the blink that distinguishes this from a link that merely died.
+        blinkyColor.h = 212;
+        return flashLED(blinkyColor, 192, 0, LEDSEQ_SPECTRUM_SCAN, sizeof(LEDSEQ_SPECTRUM_SCAN));
+#endif
     case radioFailed:
         blinkyColor.h = 0;
         return flashLED(blinkyColor, 192, 0, LEDSEQ_RADIO_FAILED, sizeof(LEDSEQ_RADIO_FAILED));

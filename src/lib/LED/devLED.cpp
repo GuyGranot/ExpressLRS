@@ -172,6 +172,14 @@ static int event()
             return flashLED(GPIO_PIN_LED_GREEN, GPIO_LED_GREEN_INVERTED, LEDSEQ_DISCONNECTED, sizeof(LEDSEQ_DISCONNECTED));
         }
         return DURATION_NEVER;
+#if defined(TX_SPECTRUM_SCAN)
+    // Deliberately shares wifiUpdate's pattern. On simple-LED targets there is
+    // no distinguishable blink left to allocate, so an honest 1-line fallthrough
+    // beats a copy of wifiUpdate's body that only looks distinct. RGB targets do
+    // get their own magenta fade -- see devRGB.cpp. Safe here because the case
+    // above (disconnected) returns on every branch, so nothing falls in.
+    case spectrumScan:
+#endif
     case wifiUpdate:
         if (hasRGBLeds)
         {

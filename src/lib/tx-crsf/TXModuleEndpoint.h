@@ -54,6 +54,9 @@ private:
 
     void handleWifiBle(propertiesCommon *item, uint8_t arg);
     void handleSimpleSendCmd(propertiesCommon *item, uint8_t arg);
+    // NB the spectrum scan needs no handler of its own: entry goes through
+    // handleWifiBle, already parameterized for "enter a mode that drops the
+    // link", and max-hold reset is re-invoking that same command.
     void updateTlmBandwidth();
     void updateBackpackOpts();
     void updateVtxAdminOpts();

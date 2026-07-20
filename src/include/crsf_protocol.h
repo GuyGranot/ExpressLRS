@@ -74,6 +74,7 @@ typedef enum : uint8_t
     CRSF_FRAMETYPE_PARAMETER_READ = 0x2C,
     CRSF_FRAMETYPE_PARAMETER_WRITE = 0x2D,
     CRSF_FRAMETYPE_ELRS_STATUS = 0x2E, // ELRS good/bad packet count and status flags
+    CRSF_FRAMETYPE_ELRS_TX_SPECTRUM = 0x30, // experimental: TX spectrum sweep -> handset (TX_SPECTRUM_SCAN builds only)
 
     CRSF_FRAMETYPE_COMMAND = 0x32,
     CRSF_FRAMETYPE_HANDSET = 0x3A,

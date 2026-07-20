@@ -11,6 +11,7 @@
 #include "helpers.h"
 #include "deferred.h"
 #include "msptypes.h"
+#include "TxSpectrum.h"
 
 #define STR_LUA_ALLAUX         "AUX1;AUX2;AUX3;AUX4;AUX5;AUX6;AUX7;AUX8;AUX9;AUX10"
 
@@ -175,6 +176,22 @@ static stringParameter luaELRSversion = {
     {version_domain, CRSF_INFO},
     commit
 };
+
+#if defined(TX_SPECTRUM_SCAN)
+//-------------------------- Spectrum ---------------------------
+static folderParameter luaSpectrumFolder = {
+    {"Spectrum", CRSF_FOLDER}
+};
+
+// Clicking this again while the scan is running resets max-hold -- see
+// TxSpectrumStart(). There is deliberately no separate Reset command: it would
+// be unreachable while scanning and a no-op otherwise.
+static commandParameter luaSpectrumScan = {
+    {"Start Scan", CRSF_COMMAND},
+    lcsIdle, // step
+    STR_EMPTYSPACE
+};
+#endif
 
 //---------------------------- WiFi -----------------------------
 static folderParameter luaWiFiFolder = {
@@ -472,6 +489,9 @@ void TXModuleEndpoint::handleWifiBle(propertiesCommon *item, uint8_t arg)
   connectionState_e targetState;
   const char *textConfirm;
   const char *textRunning;
+  // Modes that must not be entered while armed. Only the spectrum sweep needs
+  // this so far; WiFi/BLE have always been enterable armed.
+  bool requireDisarmed = false;
   if ((void *)item == (void *)&luaWebUpdate)
   {
     setTargetState = &setWifiUpdateMode;
@@ -479,6 +499,16 @@ void TXModuleEndpoint::handleWifiBle(propertiesCommon *item, uint8_t arg)
     textRunning = "WiFi Running...";
     targetState = wifiUpdate;
   }
+#if defined(TX_SPECTRUM_SCAN)
+  else if ((void *)item == (void *)&luaSpectrumScan)
+  {
+    setTargetState = &TxSpectrumStart;
+    textConfirm = "Scan? Drops link";
+    textRunning = "Scanning...";
+    targetState = spectrumScan;
+    requireDisarmed = true; // the sweep drops the RC link
+  }
+#endif
   else
   {
     setTargetState = &setBleJoystickMode;
@@ -487,7 +517,48 @@ void TXModuleEndpoint::handleWifiBle(propertiesCommon *item, uint8_t arg)
     targetState = bleJoystick;
   }
 
-  switch ((commandStep_e)arg)
+  const commandStep_e step = (commandStep_e)arg;
+
+#if defined(TX_SPECTRUM_SCAN)
+  // Compile-time proof that the private step stays out of the real commandStep_e
+  // range, so it can never be mistaken for one if the enum grows. This is the one
+  // site where both symbols are in scope (lcsQuery via CRSFParameters.h, the step
+  // via TxSpectrum.h); TxSpectrum.h only reserves the value by comment.
+  static_assert(TX_SPECTRUM_LCS_NEXT_BAND > lcsQuery,
+                "TX_SPECTRUM_LCS_NEXT_BAND collides with a real commandStep_e");
+  // Private page-button step from the spectrum plot: flip the scanned band.
+  // Handled before the lcs state machine because it is not a real commandStep_e
+  // (it is > lcsQuery). Only the spectrum command sends it, and TxSpectrumSwitchBand
+  // is itself a no-op unless a scan is running on a two-band device, so a stray
+  // value here can do nothing else.
+  if ((void *)item == (void *)&luaSpectrumScan && arg == TX_SPECTRUM_LCS_NEXT_BAND)
+  {
+    TxSpectrumSwitchBand();
+    return;
+  }
+#endif
+
+  // Gated on the step rather than hoisted outright: lcsCancel and lcsQuery must
+  // NOT be refused, or RTN could never close the popup. Covering click and
+  // confirm both is deliberate -- the model can be armed between the two -- but
+  // one site, because lcsClick falls through to lcsConfirmed and a per-case copy
+  // would evaluate IsArmed() twice in a row on that path.
+  //
+  // Refuse with lcsExecuting, not lcsCancel. The ELRS Lua only renders popup
+  // statuses 0/2/3 (elrs.lua runPopupPage); an lcsCancel response matches none of
+  // them, so the script would draw nothing and sit on a frozen screen until RTN.
+  // lcsExecuting is the only status that shows the reason AND offers
+  // "Press [RTN] to exit", and the lcsQuery echo in default: below keeps
+  // repeating it until the user does. RTN then lands in lcsCancel, which answers
+  // lcsIdle and closes the popup -- and cannot reboot, because connectionState
+  // never became targetState.
+  if (requireDisarmed && (step == lcsClick || step == lcsConfirmed) && isArmed)
+  {
+    sendCommandResponse(cmd, lcsExecuting, "Disarm first");
+    return;
+  }
+
+  switch (step)
   {
     case lcsClick:
       if (connectionState == connected)
@@ -907,6 +978,14 @@ void TXModuleEndpoint::registerParameters()
     }, luaVtxFolder.common.id);
     registerParameter(&luaVtxSend, sendCallback, luaVtxFolder.common.id);
   }
+
+#if defined(TX_SPECTRUM_SCAN)
+  // Spectrum folder. MAX_CRSF_PARAMETERS is 64 and the TX registers ~36.
+  if (HAS_RADIO) {
+    registerParameter(&luaSpectrumFolder);
+    registerParameter(&luaSpectrumScan, wifiBleCallback, luaSpectrumFolder.common.id);
+  }
+#endif
 
   // WIFI folder
   registerParameter(&luaWiFiFolder);

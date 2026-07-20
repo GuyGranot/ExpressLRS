@@ -471,7 +471,20 @@ static int timeout()
 
 static int event()
 {
-    const bool disabled = config.GetBackpackDisable() || connectionState == bleJoystick || connectionState == wifiUpdate;
+    bool disabled = config.GetBackpackDisable() || connectionState == bleJoystick || connectionState == wifiUpdate;
+#if defined(TX_SPECTRUM_SCAN)
+    // The backpack is an ESP running WiFi/ESPNOW on 2.4GHz centimetres from the
+    // radio we are measuring with; left on, a 2.4GHz sweep would measure our own
+    // backpack. This is measurement correctness, not tidiness.
+    //
+    // Deliberately a third equality rather than "connectionState > MODE_STATES":
+    // that would newly disable the backpack in noCrossfire, serialUpdate,
+    // radioFailed and hardwareUndefined too -- a behaviour change to existing
+    // firmware for no benefit here. "Does this mode own the ESP's radio?" is not
+    // expressible on connectionState's single ordinal axis, which is why this
+    // site is a chain while line 446 is not.
+    disabled = disabled || connectionState == spectrumScan;
+#endif
     if (GPIO_PIN_BACKPACK_EN != UNDEF_PIN)
     {
         // EN should be HIGH to be active
