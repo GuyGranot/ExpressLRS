@@ -533,12 +533,135 @@ local function parseElrsV1Message(data)
   fieldTimeout = getTime() + 0xFFFF
 end
 
+--------------------------- TX spectrum analyzer ---------------------------
+-- Renders CRSF_FRAMETYPE_ELRS_TX_SPECTRUM (0x30) streamed by a TX built with
+-- -DTX_SPECTRUM_SCAN. Wire format: src/lib/TxSpectrum/TxSpectrumProtocol.h
+--
+-- EdgeTX strips the address byte and the CRC, so data[] arrives as:
+--   [1]=ext dest  [2]=ext orig (=deviceId)  [3]=version  [4]=flags
+--   [5]=sweepSeq  [6]=binOffset  [7]=binCount  [8]=totalBins
+--   [9..12]=startFreqKhz BE  [13..14]=stepKhz BE  [15..]=int8 dBm bins
+--
+-- All of this stays inert unless a 0x30 frame actually arrives, so the script
+-- remains compatible with stock firmware that never sends one.
+local spectrum = nil
+local SPEC_TOP, SPEC_BOT = -30, -110      -- dBm at the top / bottom of the plot
+local SPEC_RANGE = SPEC_TOP - SPEC_BOT
+local SPEC_INVALID = -128                 -- == TX_SPECTRUM_RSSI_INVALID
+local SPEC_BAR = 9                        -- title bar height, shared with lcd_title_bw
+-- Set by setLCDvar() for screens this view supports. SPEC_Y1 == nil means
+-- "unsupported screen" and parseSpectrumMessage refuses to enter -- see there.
+local SPEC_Y0, SPEC_Y1, SPEC_SPAN
+local floor = math.floor
+
+local function specY(v)
+  -- Kept as *SPAN/RANGE rather than a pre-divided scale: 42/80 is not exactly
+  -- representable, and floor() at a bin boundary would then be 1 ulp away from
+  -- a different pixel.
+  local y = SPEC_Y1 - floor((v - SPEC_BOT) * SPEC_SPAN / SPEC_RANGE)
+  -- Not redundant with the firmware's clamp: StoreBin constrains to the int8
+  -- range (-127..127), this constrains to the plot window (-110..-30). A real
+  -- -20dBm reading would otherwise draw a bar up through the title bar.
+  --
+  -- It is also what keeps drawLine working at all. EdgeTX's B&W drawLine takes
+  -- unsigned coords and silently returns without drawing if any exceeds
+  -- LCD_W/LCD_H (api_stdlcd.cpp:136-137) -- so an unclamped bar would not
+  -- overdraw, it would vanish. Keep this clamp ahead of every drawLine.
+  if y < SPEC_Y0 then return SPEC_Y0 end
+  if y > SPEC_Y1 then return SPEC_Y1 end
+  return y
+end
+
+-- Returns true when a trace is complete and the plot is worth redrawing.
+local function parseSpectrumMessage(data)
+  if data[2] ~= deviceId or data[3] ~= 1 then return end -- not ours, or unknown proto version
+  local offset, count, total = data[6], data[7], data[8]
+  if total == 0 or count == 0 or offset + count > total then return end
+
+  -- Read before the entry test, so a change of axis re-latches. Testing total
+  -- alone would be correct only by luck: it happens to work for a band switch
+  -- today because every sub-GHz domain differs from 2.4GHz's 80 channels
+  -- (FHSS.cpp: AU915=20, FCC915=40, EU868=13, IN866=4, 433=3/3/8, US433W=20),
+  -- but an 80-channel sub-GHz domain would then render band 2 on band 1's axis
+  -- -- a plot that looks right and reads wrong. See DESIGN.md section 10.
+  local startKhz = fieldGetValue(data, 9, 4) -- BE, see TxSpectrumProtocol.h
+
+  local s = spectrum
+  if s == nil or s.total ~= total or s.startKhz ~= startKhz then
+    -- This view is laid out for mono screens only; setLCDvar leaves SPEC_Y1 nil
+    -- on anything else. Refusing here degrades gracefully: the "Scanning..."
+    -- popup simply stays up offering [RTN], which cancels the scan as usual. The
+    -- alternative -- drawing with unverified primitives -- risks a script error
+    -- while the TX is in scan mode with the link down and RTN unreachable.
+    if SPEC_Y1 == nil then return end
+
+    -- Two ways into this block: the first frame of a scan (s == nil), and a band
+    -- flip while the plot is already open (s ~= nil, the axis changed -- the Nomad
+    -- page button). They need opposite things from fieldPopup, so split them.
+    local fieldId
+    if s == nil then
+      -- First entry must come from a running Start Scan popup, and this guard is
+      -- what makes EXIT stick: the TX keeps sweeping for the ~400ms until its
+      -- reboot lands, so ~8 more frames arrive after the user leaves -- but by then
+      -- spectrum has been nil'd, so those land here with s == nil and are refused,
+      -- rather than indexing the fieldPopup EXIT already cleared (which would throw
+      -- and kill the script while the TX is mid-scan with the link down). Confirmed
+      -- by deleting this guard and running the mockup harness (mockup/README.md).
+      if fieldPopup == nil then return end
+      fieldId = fieldPopup.id
+    else
+      -- Band flip: the plot owns the screen, fieldPopup is already nil, and the id
+      -- is already stashed. Re-latch onto the new band WITHOUT requiring a popup --
+      -- gating on fieldPopup here (as first entry does) would drop every frame after
+      -- the switch and freeze the plot on the old band. The new band's max-hold
+      -- starts cold, matching the TX's own reset (DESIGN §10).
+      fieldId = s.fieldId
+    end
+
+    -- Latch the axis for this band. The firmware repeats it in every frame only so
+    -- a late-joining decoder can self-locate; this block is that join. It cannot
+    -- change during a scan of one band -- but it does change when the band does,
+    -- which is why the test above compares startKhz, not just total.
+    s = { total = total, cursor = 1, bins = {}, hold = {},
+          fieldId = fieldId,
+          startKhz = startKhz,
+          stepKhz = fieldGetValue(data, 13, 2),
+          -- Band label from the axis: sub-GHz vs 2.4GHz. Latched here (not per draw)
+          -- to keep the animating redraw allocation-free.
+          title = (startKhz < 1000000) and "SPEC 900" or "SPEC 2.4" }
+    -- Required, not defensive: the live trace's SWEEP_END draws before any
+    -- max-hold frame lands, so hold[i] would be nil in the draw loop.
+    for i = 1, total do s.bins[i] = SPEC_INVALID; s.hold[i] = SPEC_INVALID end
+    spectrum = s
+    fieldPopup = nil
+  end
+
+  s.seq = data[5]
+
+  local dst = (bit32.band(data[4], 0x03) == 1) and s.hold or s.bins -- TRACE_MASK 1 = max-hold
+  for i = 0, count - 1 do
+    local v = data[15 + i]
+    if v == nil then break end
+    dst[offset + i + 1] = (v > 127) and (v - 256) or v -- uint8 -> int8
+  end
+
+  -- Redraw once per completed trace, not per frame. The TX emits one frame per
+  -- TX_SPECTRUM_EMIT_INTERVAL_MS (50ms), cycling live[0:40], live[40:80],
+  -- hold[0:40], hold[40:80] -- so a trace completes every 100ms and redrawing
+  -- 80 bins on each of the four frames would be 2x wasted work.
+  return bit32.btest(data[4], 0x04) -- SWEEP_END
+end
+
 local function refreshNext(skipPush)
   local command, data, forceRedraw
   repeat
     command, data = crossfireTelemetryPop()
     if command == 0x29 then
       parseDeviceInfoMessage(data)
+    elseif command == 0x30 then
+      if parseSpectrumMessage(data) then
+        forceRedraw = true
+      end
     elseif command == 0x2B then
       if parseParameterInfoMessage(data) then
         forceRedraw = true
@@ -820,6 +943,111 @@ local function runPopupPage(event)
   end
 end
 
+local function drawSpecVal(x, y, v)
+  if v > SPEC_INVALID then
+    lcd.drawNumber(x, y, v)
+  else
+    lcd.drawText(x, y, "--")
+  end
+end
+
+local function drawSpectrum(s)
+  lcd.clear()
+  local total = s.total
+  -- One pixel per bin, centred. The 2.4GHz FHSS grid is 80 channels, so on a
+  -- 128px screen this lands at x=24..103 with room either side.
+  local x0 = floor((LCD_W - total) / 2)
+  if x0 < 0 then x0 = 0 end
+
+  -- Mirrors lcd_title_bw's bar. Showing elrsFlagsInfo when titleShowWarn is set
+  -- is load-bearing, not cosmetic: it is what puts the blinking "[ ! Armed ! ]"
+  -- on this screen. Arming aborts the scan by rebooting the TX (DESIGN.md R1.4),
+  -- so without it the plot would just freeze with no explanation.
+  lcd.drawFilledRectangle(0, 0, LCD_W, SPEC_BAR, GREY_DEFAULT)
+  lcd.drawText(COL1, 1, titleShowWarn and elrsFlagsInfo or s.title, INVERS)
+  lcd.drawNumber(LCD_W - 1, 1, s.seq, RIGHT + INVERS)
+
+  -- Cursor first, so it shows through the gaps above the bars rather than being
+  -- buried under them.
+  --
+  -- Every drawLine here passes all six args: unlike most lcd.* calls, B&W
+  -- drawLine's pattern and flags are checkunsigned, not optional
+  -- (api_stdlcd.cpp:133-134) -- omitting either raises a Lua error rather than
+  -- defaulting.
+  local cx = x0 + s.cursor - 1
+  lcd.drawLine(cx, SPEC_Y0, cx, SPEC_Y1, DOTTED, 0)
+
+  -- Tick every 10 bins (~10MHz on 2.4GHz) for spatial reference
+  for i = 1, total, 10 do
+    lcd.drawLine(x0 + i - 1, SPEC_Y1 + 1, x0 + i - 1, SPEC_Y1 + 2, SOLID, 0)
+  end
+
+  local bins, hold = s.bins, s.hold
+  for i = 1, total do
+    local x = x0 + i - 1
+    local v = bins[i]
+    if v > SPEC_INVALID then
+      lcd.drawLine(x, specY(v), x, SPEC_Y1, SOLID, 0) -- live: filled bar
+    end
+    local m = hold[i]
+    if m > SPEC_INVALID then
+      lcd.drawPoint(x, specY(m))                      -- max-hold: dot
+    end
+  end
+
+  -- Readout for the cursor bin. Max-hold is what actually reveals bursty
+  -- traffic; a single sweep of a busy band looks nearly empty.
+  local c = s.cursor
+  local y = LCD_H - 8
+  -- One decimal, not a whole number. No shipping grid lands on an integer MHz
+  -- (FCC915 is 903.5 + 0.6n, ISM2G4 2400.4 + 1.0n), so ANY integer label is wrong
+  -- for every bin: floor() understated by up to 0.9 on FCC915 -- more than that
+  -- band's own 0.6 bin step -- and rounding merely moved the error. A CW at
+  -- 915.000 lands on the 914.9 bin and now reads "914.9MHz", which is the bin it
+  -- actually is. The decimal identifies the BIN, it does not claim 100kHz
+  -- measurement accuracy -- see DESIGN.md 3.6.
+  --
+  -- string.format, not drawNumber(..., PREC1): the format path is already proven
+  -- in this script, whereas an unregistered PREC1 would silently render "9149".
+  lcd.drawText(COL1, y, string.format("%.1fMHz", (s.startKhz + (c - 1) * s.stepKhz) / 1000))
+  drawSpecVal(COL2, y, bins[c])
+  lcd.drawText(lcd.getLastPos(), y, "/")
+  drawSpecVal(lcd.getLastPos(), y, hold[c])
+  lcd.drawText(lcd.getLastPos(), y, "dB")
+end
+
+local function runSpectrumPage(event)
+  local s = spectrum
+  if event == EVT_VIRTUAL_EXIT then
+    -- lcsCancel: the TX reboots out of scan mode and the link comes back. There
+    -- is no teardown to get wrong -- see lib/TxSpectrum/DESIGN.md R1.5.
+    --
+    -- Nothing is cleared here to block the frames still in flight during that
+    -- reboot: entry already destroyed its own precondition by nil-ing fieldPopup.
+    -- If you ever keep fieldPopup alive across a scan, re-read parseSpectrumMessage.
+    crossfireTelemetryPush(0x2D, { deviceId, handsetId, s.fieldId, 5 })
+    spectrum = nil -- drop both bin tables; this script runs near the Lua heap limit
+    reloadAllField()
+    return
+  elseif event == EVT_VIRTUAL_PREV then
+    s.cursor = (s.cursor > 1) and (s.cursor - 1) or s.total
+  elseif event == EVT_VIRTUAL_NEXT then
+    s.cursor = (s.cursor < s.total) and (s.cursor + 1) or 1
+  elseif event == EVT_VIRTUAL_ENTER then
+    -- Re-invoking the running Start Scan resets max-hold; see TxSpectrumStart().
+    crossfireTelemetryPush(0x2D, { deviceId, handsetId, s.fieldId, 1 }) -- lcsClick
+  elseif event == EVT_VIRTUAL_NEXT_PAGE or event == EVT_VIRTUAL_PREV_PAGE then
+    -- Page button: flip the scanned band on a cross-band TX. Reuses the plot's own
+    -- field id with a private step (8 = TX_SPECTRUM_LCS_NEXT_BAND, see TxSpectrum.h),
+    -- so no second command field and no sibling-id lookup is needed. The TX
+    -- reconfigures the band-matched radio; the next frame carries the new axis and
+    -- parseSpectrumMessage re-latches this view for the other band (title included).
+    -- On a single-band TX the step is a no-op there, so the button just does nothing.
+    crossfireTelemetryPush(0x2D, { deviceId, handsetId, s.fieldId, 8 })
+  end
+  drawSpectrum(s)
+end
+
 local function touch2evt(event, touchState)
   -- Convert swipe events to normal events Left/Right/Up/Down -> EXIT/ENTER/PREV/NEXT
   -- PREV/NEXT are swapped if editing
@@ -884,6 +1112,12 @@ local function setLCDvar()
     COL1 = 0
     textYoffset = 3
     textSize = 8
+    -- Spectrum plot geometry. Only set on B&W: leaving SPEC_Y1 nil on colour is
+    -- what makes parseSpectrumMessage refuse to enter the view there, since the
+    -- layout below and the primitives it uses were only verified for mono.
+    SPEC_Y0 = SPEC_BAR + 2
+    SPEC_Y1 = LCD_H - textSize - 3 -- 53 on 64px; tracks the 96px panels too
+    SPEC_SPAN = SPEC_Y1 - SPEC_Y0
   end
 end
 
@@ -897,6 +1131,11 @@ local function setMock()
   fields_count = #fields - 1
   loadQ = { fields_count }
   deviceIsELRS_TX = true
+  -- Fake TX for the spectrum view: replays real encoder output through this
+  -- script's own decoder. Rebinds crossfireTelemetryPop/Push, so it must load
+  -- after the fields above. Optional -- absent on a normal SD card.
+  local spec = loadScript("mockup/spectrummock.lua")
+  if spec ~= nil then spec() end
 end
 
 local function checkCrsfModule()
@@ -955,7 +1194,9 @@ local function run(event, touchState)
   -- If ENTER pressed, skip any pushing this loop to reserve queue for the save command
   local forceRedraw = refreshNext(event == EVT_VIRTUAL_ENTER)
 
-  if fieldPopup ~= nil then
+  if spectrum ~= nil then
+    if event ~= 0 or forceRedraw then runSpectrumPage(event) end
+  elseif fieldPopup ~= nil then
     runPopupPage(event)
   elseif event ~= 0 or forceRedraw or edit then
     runDevicePage(event)

@@ -27,6 +27,15 @@ return {
     {name='F3', id=25, type=0, parent=24, value=1, step=1, min=1, max=8, unit=''},
     {name='F4', id=26, type=0, parent=24, value=1, step=1, min=1, max=8, unit=''},
 
+  -- TX spectrum analyzer. Registered last, mirroring TXModuleParameters.cpp.
+  -- id=28 must match SCAN_FIELD_ID in spectrummock.lua.
+  {name='Spectrum', id=27, type=11},
+    -- 'status' is load-bearing, not decoration: fieldCommandSave only opens a
+    -- popup when status ~= nil and < 4, and fieldPopup ~= nil is what lets
+    -- parseSpectrumMessage take over the screen. None of the other mock command
+    -- fields set it, which is why clicking Bind here does nothing.
+    {name='Start Scan', id=28, type=13, parent=27, status=2, timeout=200, info='Scanning...'},
+
   {name="----BACK----", type=14, parent=255},
   {name="----EXIT----", type=14, exit = true}
 }, "0/500   C", "ExpressLRS TX"
