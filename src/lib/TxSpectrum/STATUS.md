@@ -103,6 +103,44 @@ passed.
 Segment-data differences: **32, all inside `app_elf_sha256`.** Appended build-config differences:
 **0.**
 
+**CI now compiles the feature (`tx-spectrum-pr`, 2026-07-20).** Until now nothing in CI ever
+built the feature's source: the flag is off by default and no target env sets it, so the release
+matrix only ever compiled it *out*. That is exactly what N0 asserts, but it also meant
+`TxSpectrum.cpp` would bit-rot silently the first time `Radio`/`hwTimer`/CRSF changed shape.
+
+`.github/workflows/build.yml` gains a `spectrum-feature-build` job: one target per **radio
+driver**, since the sweep differs between them (LR1121 does the per-bin `STDBY_RC` reset and flat
+settle; SX128x does not).
+
+| Target | Driver | Domain flag |
+|---|---|---|
+| `Unified_ESP32_LR1121_TX_via_UART` | LR1121 | `FCC_915` |
+| `Unified_ESP32_2400_TX_via_UART` | SX128x | `ISM_2400` |
+
+Compile checks only — deliberately no artifact upload, since nothing here ships.
+
+**`Unified_ESP32_2400_TX_via_UART` builds with the feature on: ✅ verified locally (2026-07-20),
+RAM 21.7% / Flash 82.2%.** This is the first time the **SX128x** path has been compiled on this
+branch — every prior build here was LR1121 — so it was a real risk, not a formality. Confirmed by
+symbol rather than by exit code: 7 spectrum symbols in the ELF (`TxSpectrumStart`,
+`TxSpectrumSwitchBand`, `TxSpectrumResetMaxHold`, `TxSpectrum_device`) and `TxSpectrum.cpp.o` at
+216,404 B against **1,896 B** flag-off.
+
+> **Two traps worth carrying forward, both of which can fake a result.**
+>
+> **1. `PLATFORMIO_BUILD_FLAGS` with multiple space-separated flags is silently dropped on
+> Windows/PIO 6.1.19.** A single flag merges; `"-DA -DB"` merges *neither*, with no warning. The
+> build still succeeds for an SX128x target — the missing-domain check in `build_flags.py` only
+> fires for `RADIO_SX127X`/`RADIO_LR1121` — so you get a green build with the feature compiled
+> out. Verify by symbol or by the `build flags:` line the script prints, never by exit code. CI
+> is `ubuntu-latest`, where the existing LR1121 job already relies on multi-flag, so the CI job
+> above is unaffected; locally, use `super_defines.txt`.
+>
+> **2. A local `pio run` on these envs reports `FAILED` at the post-link
+> `UnifiedConfiguration` step**, which prompts for a product when `sys.stdin.isatty()`. This is
+> *after* `firmware.bin` is written; the image is complete. CI has no tty and takes the
+> "leaving the firmware bare" branch, so it does not prompt. Locally, pipe: `echo "" | pio run`.
+
 **Nomad hardware bring-up on 4.1.0:**
 - ✅ **N2 PASSED (2026-07-18):** trace varies on **both** bands (Config/SetMode trap cleared on
   each -> band-matched-radio routing confirmed, r1=sub-GHz / r2=2.4); paired RX **failsafes on

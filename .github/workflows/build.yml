@@ -82,6 +82,61 @@ jobs:
         platformio pkg update
         PLATFORMIO_BUILD_FLAGS="-DRegulatory_Domain_ISM_2400" pio test -e native
 
+  # The TX spectrum analyzer (-DTX_SPECTRUM_SCAN) is off by default and is not
+  # set by any target env, so the build matrix below only ever compiles it OUT.
+  # That is by design -- flag-off builds are byte-identical to stock -- but it
+  # also means nothing else in CI ever compiles the feature's source, and it
+  # would bit-rot silently the first time Radio/hwTimer/CRSF changed shape.
+  #
+  # One target per radio driver, because the sweep differs between them: the
+  # LR1121 path does a per-bin STDBY_RC reset and a flat settle, the SX128x path
+  # does not. These are compile checks only and are deliberately not uploaded as
+  # artifacts -- nothing here ships.
+  spectrum-feature-build:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: Unified_ESP32_LR1121_TX_via_UART
+            flags: "-DRegulatory_Domain_FCC_915 -DTX_SPECTRUM_SCAN"
+          - target: Unified_ESP32_2400_TX_via_UART
+            flags: "-DRegulatory_Domain_ISM_2400 -DTX_SPECTRUM_SCAN"
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v6
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.10'
+
+    - name: Cache pip
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ matrix.target }}
+
+    - name: Install PlatformIO
+      run: |
+        python -m pip install --upgrade pip
+        pip install platformio
+        pip install wheel
+
+    - name: Cache PlatformIO
+      uses: actions/cache@v5
+      with:
+        path: ~/.platformio
+        key: ${{ runner.os }}-platformio
+
+    - name: Build with the spectrum analyzer enabled
+      run: |
+        cd src
+        platformio pkg install --platform native
+        platformio pkg update
+        PLATFORMIO_BUILD_FLAGS="${{ matrix.flags }}" pio run -e ${{ matrix.target }}
+
   targets:
     needs:
       - build-and-validate-artifacts
