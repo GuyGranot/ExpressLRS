@@ -596,7 +596,8 @@ the first band. Split into initial-entry (needs the popup) vs band-flip (keeps t
 id) — see `parseSpectrumMessage`. Exactly the class of silent seam the sim ladder exists for.
 
 **N0 — flag-off byte-identical proof on the LR1121 target: ✅ PASSED (2026-07-18).**
-Method (reusable for any target, incl. the future Boxer-internal 2.4): build the
+Method (reusable for any target — it was later reused for the Boxer-internal 2.4, brought up
+~2026-07-19; this line called it "future" when written on 2026-07-18): build the
 `Unified_ESP32_LR1121_TX_via_ETX` image twice at **HEAD** — once with the feature files
 present but the flag off (`super_defines.txt` reduced to just `-DRegulatory_Domain_FCC_915`),
 once with the 9 TX-compiled shared files reverted to stock `b5a5b5fd` — then `cmp` the two

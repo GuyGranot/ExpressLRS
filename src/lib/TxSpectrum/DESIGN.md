@@ -26,6 +26,8 @@ stock — R1.1).
 
 Between them they exercise every sweep topology the code supports. Per-target build
 commands and layout picks are in `BUILDING.md`; validation evidence is in `STATUS.md`.
+**Validation is not uniform across the three — see §11.2 for what was proven where, and on which
+base.** The Nomad is the only target validated on 4.1.0 end to end.
 
 ## 1. Goal
 
@@ -1355,8 +1357,21 @@ and dwells for seconds.
 | Target | Radio | Bands | Topology | Feature validated | AGC fix validated |
 |---|---|---|---|---|---|
 | **RadioMaster Nomad** | dual LR1121 | 900 + 2.4 | cross-band | ✅ N0–N5, 4.1.0 | ✅ 2026-07-20 |
-| **BETAFPV SuperG** | dual SX1280 | 2.4 | Gemini split | ✅ P0–P5, 4.0.1 | n/a — not applied |
-| **RadioMaster Boxer** internal | single SX1280 | 2.4 | single-radio | ✅ P0–P5, 4.0.1 | n/a — not applied |
+| **BETAFPV SuperG** | dual SX1280 | 2.4 | Gemini split | ✅ P0–P5, **4.0.1** | n/a — LR1121 only |
+| **RadioMaster Boxer** internal | single SX1280 | 2.4 | single-radio | ✅ brought up, **4.1.0** | n/a — LR1121 only |
+
+> **Provenance, corrected 2026-07-20.** An earlier version of this table credited the Boxer
+> internal with "P0–P5, 4.0.1". That was a misreading of STATUS.md's phase table, whose third
+> column is *hardware used*: "SuperG + Boxer" there means the SuperG module **in** the Boxer
+> handset, and the P0–P5 record is the SuperG's alone. The Boxer's internal module was brought up
+> separately on **4.1.0** (~2026-07-19; the two-step bootstrap in `BUILDING.md` §5b comes from that
+> session). The scope of that bring-up was not recorded phase-by-phase, so it is stated here as
+> bring-up rather than as a P0–P5 equivalent.
+>
+> **Neither SX1280 target has been validated against the 4.1.0 PR branch itself.** The SuperG's
+> evidence is 4.0.1-era; the Boxer's predates the split. The TX firmware is byte-identical between
+> `tx-spectrum-nomad-4.1.0` and `tx-spectrum-pr` — the only delta is removing an unused enum
+> member — so no behaviour change is expected, but "expected" is not "verified".
 
 Off-hardware gates: `pio test -e native -f test_txspectrum -f test_spectrum` (24/24) and
 `lua/mockup/simcheck.py`.
