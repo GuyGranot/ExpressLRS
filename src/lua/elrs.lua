@@ -583,7 +583,7 @@ local function parseSpectrumMessage(data)
   -- today because every sub-GHz domain differs from 2.4GHz's 80 channels
   -- (FHSS.cpp: AU915=20, FCC915=40, EU868=13, IN866=4, 433=3/3/8, US433W=20),
   -- but an 80-channel sub-GHz domain would then render band 2 on band 1's axis
-  -- -- a plot that looks right and reads wrong. See DESIGN.md section 10.
+  -- -- a plot that looks right and reads wrong. See DESIGN.md 2.4.
   local startKhz = fieldGetValue(data, 9, 4) -- BE, see TxSpectrumProtocol.h
 
   local s = spectrum
@@ -1005,7 +1005,7 @@ local function drawSpectrum(s)
   -- band's own 0.6 bin step -- and rounding merely moved the error. A CW at
   -- 915.000 lands on the 914.9 bin and now reads "914.9MHz", which is the bin it
   -- actually is. The decimal identifies the BIN, it does not claim 100kHz
-  -- measurement accuracy -- see DESIGN.md 3.6.
+  -- measurement accuracy -- see DESIGN.md 2.6.
   --
   -- string.format, not drawNumber(..., PREC1): the format path is already proven
   -- in this script, whereas an unregistered PREC1 would silently render "9149".

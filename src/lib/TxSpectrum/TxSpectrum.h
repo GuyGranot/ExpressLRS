@@ -30,7 +30,7 @@ void TxSpectrumResetMaxHold();
 /**
  * Flip to the other band mid-scan (cross-band LR1121, e.g. Nomad). Driven by the
  * handset's page button. No-op on single-band devices or when no scan is running.
- * The unviewed band's max-hold starts cold on return; see DESIGN.md §10.
+ * The unviewed band's max-hold starts cold on return; see DESIGN.md 2.4.
  */
 void TxSpectrumSwitchBand();
 

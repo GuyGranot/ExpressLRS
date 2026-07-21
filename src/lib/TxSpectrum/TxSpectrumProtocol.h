@@ -70,7 +70,7 @@ enum
     TX_SPECTRUM_FLAG_TRACE_MASK = 0x03, // trace id, see TX_SPECTRUM_TRACE_*
     TX_SPECTRUM_FLAG_SWEEP_END = 0x04,  // last frame of this trace's sweep; set by the encoder
 
-    // Reserved for antenna-compare mode (DESIGN.md P6). The bit positions are
+    // Reserved for antenna-compare mode (DESIGN.md 2.4). The bit positions are
     // claimed now so the wire format need not change later, but NOTHING EMITS
     // THEM YET -- do not infer from these that compare mode exists.
     TX_SPECTRUM_FLAG_MODE_COMPARE = 0x08, // 0 = split-band sweep, 1 = antenna compare

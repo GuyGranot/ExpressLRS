@@ -74,7 +74,7 @@ Measures `elrs.lua`'s Lua heap cost on a **real handset**. The simulator cannot 
 it never compiles `custom_allocator.cpp` (`CMakeLists.txt:573-575` returns before
 `-DUSE_CUSTOM_ALLOCATOR`), so Lua falls back to plain desktop `malloc` — no CCM, no ceiling.
 `LUA_MEM_MAX` is 0 ("unlimited") on B&W targets in both builds, so there is no soft cap
-standing in either. See `lib/TxSpectrum/DESIGN.md` 9.4.
+standing in either. See `lib/TxSpectrum/DESIGN.md` 4.
 
 Copy it to the TOOLS **root** (EdgeTX only enumerates the top level, so it will not appear
 from a subdirectory), alongside a pristine `elrs_stock.lua` to compare against:

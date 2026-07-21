@@ -35,7 +35,7 @@
 // What TxSpectrum.cpp puts in the extended header (TxSpectrum.cpp:311-316), and
 // therefore what EdgeTX hands the script as data[1] and data[2]. Hardcoded
 // rather than #included: crsf_protocol.h drags lib/CrsfProtocol in, which is the
-// same trap DESIGN.md 9.3 documents for the native tests.
+// same trap the native env's lib_ignore comment documents in platformio.ini.
 #define ADDR_RADIO_TRANSMITTER 0xEA // dest
 #define ADDR_CRSF_TRANSMITTER  0xEE // orig -- elrs.lua's default deviceId
 

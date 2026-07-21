@@ -106,7 +106,7 @@ void test_negative_and_sentinel_rssi(void)
 void test_trace_id_roundtrip(void)
 {
     // Only flags the firmware actually emits. MODE_COMPARE/RADIO_2 are reserved
-    // bit positions with no emitter (DESIGN.md P6) -- asserting on them here
+    // bit positions with no emitter (DESIGN.md 2.4) -- asserting on them here
     // would imply a feature that does not exist.
     int8_t in[2] = {-90, -91};
     uint8_t payload[TX_SPECTRUM_MAX_PAYLOAD_BYTES];
@@ -267,7 +267,7 @@ void test_bin_freq_matches_real_fhss_grids(void)
 void test_payload_size_is_pinned(void)
 {
     // Pins the two numbers the rest of the design is calibrated against: 52
-    // payload bytes -> 58 on the wire, which is what DESIGN.md 5's "1 frame per
+    // payload bytes -> 58 on the wire, which is what DESIGN.md 3's "1 frame per
     // 25ms" pacing assumes against EdgeTX's 255-byte Lua queue (~4 frames).
     // Whether 58 still fits a CRSF frame is checked by the static_assert in
     // TxSpectrum.cpp -- see the note at the top of this file.
@@ -362,7 +362,7 @@ void test_max_bins_covers_every_fhss_domain(void)
     // or BeginScan() will silently truncate the sweep.
     //
     // Note this is a PER-BAND bound, and that is deliberate: the design scans one
-    // band per screen (DESIGN.md 10.1), so 80 covers the widest view that can
+    // band per screen (DESIGN.md 2.4), so 80 covers the widest view that can
     // exist. A *combined* dual-band plot would need 120 (FCC915 40 + ISM2G4 80)
     // and would lose 40 bins at BeginScan()'s clamp without a sound anywhere.
     TEST_ASSERT_EQUAL(80, TX_SPECTRUM_MAX_BINS);

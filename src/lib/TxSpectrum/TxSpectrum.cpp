@@ -56,7 +56,7 @@ static_assert(TX_SPECTRUM_MAX_PAYLOAD_BYTES <= CRSF_PAYLOAD_SIZE_MAX,
 #define TX_SPECTRUM_CHUNK_BUDGET_US 1300
 #define TX_SPECTRUM_MAX_POSITIONS_PER_CALL 16
 
-// DESIGN.md 5: pace one frame per interval, never burst a sweep. Two independent
+// DESIGN.md 3: pace one frame per interval, never burst a sweep. Two independent
 // reasons, and the tighter one is the handset's heap:
 //
 //  - EdgeTX's Lua telemetry queue is 255 usable bytes and, on B&W handsets, is
@@ -108,7 +108,7 @@ static uint32_t lastEmitMs;
  *
  * Kept local rather than shared. The natural home is next to isDualRadio() in
  * common.h, but that is a flight header and DESIGN.md R1.2 keeps this diff
- * additive. Recorded in DESIGN.md 9.2. If you add a radio family, this shim is
+ * additive. Recorded in DESIGN.md 7. If you add a radio family, this shim is
  * the one place the sweep knows which RSSI call that family wants.
  */
 static int8_t ReadRssiInst(const SX12XX_Radio_Number_t radio)
@@ -136,7 +136,7 @@ static int8_t ReadRssiInst(const SX12XX_Radio_Number_t radio)
  * question: it drops to STDBY_RC and re-enters RX on EVERY bin (SweepChunk), so
  * the delay must also cover a PLL relock and a full AGC re-acquisition. That is
  * the flat 1000us. Shorten it while the per-bin reset stays and the 915 whole-band
- * floor lift comes straight back (DESIGN.md 3.3.3, invariant M1).
+ * floor lift comes straight back (DESIGN.md 2.3.2, invariant M1).
  *
  * Returning a real delay on the unknown-radio_type fallthrough rather than LBT's 0
  * is also deliberate and is the safer direction: 0 samples before the AGC settles
@@ -202,7 +202,7 @@ static uint32_t RssiSettleUs(const uint8_t SF, const uint8_t radio_type)
  * link's tracking offset.
  *
  * FHSS.h open-codes this expression in eight places and has no helper to call;
- * extracting one is a flight-critical refactor out of scope here (DESIGN.md 9.1).
+ * extracting one is a flight-critical refactor out of scope here (DESIGN.md 7).
  */
 static uint32_t BinToRadioFreq(const uint8_t bin)
 {
@@ -227,7 +227,7 @@ static void ComputeAxis()
  * halve both the frames and its own GC load -- but the TX sweeps at ~40-50Hz
  * while the handset only ever sees a live trace at 10Hz. A handset-side max-hold
  * would miss roughly three quarters of all sweeps, and so would fail at exactly
- * the bursty-traffic job it exists for (DESIGN.md 3.5).
+ * the bursty-traffic job it exists for (DESIGN.md 2.5).
  */
 static void StoreBin(const uint8_t bin, const int8_t raw)
 {
@@ -429,7 +429,7 @@ static void BeginScan()
     // every sub-GHz domain is smaller (FHSS.cpp:14-23) -- so 80 covers the
     // widest view that can exist. A *combined* dual-band plot would need 120
     // (FCC915 40 + ISM2G4 80) and would silently lose 40 bins right here.
-    // DESIGN.md §10 covers why per-band screens avoid that.
+    // DESIGN.md 2.4 covers why per-band screens avoid that.
     if (bins > TX_SPECTRUM_MAX_BINS)
     {
         bins = TX_SPECTRUM_MAX_BINS;
@@ -562,9 +562,9 @@ void TxSpectrumSwitchBand()
  * measurement itself is unchanged. Exit is by reboot, so the re-init restores the
  * interrupt -- there is no teardown path to get wrong.
  *
- * Honest scope note: this closes a real unsynchronised-SPI race (same class as the
- * cross-core hazard in STATUS.md), but it fixes NO observed symptom. It was written
- * for the 2026-07-19 diagnosis of the 915 floor lift, and testing refuted that -- the
+ * Honest scope note: this closes a real unsynchronised-SPI race, but it fixes NO
+ * observed symptom. It was written for the 2026-07-19 diagnosis of the 915 floor
+ * lift, and testing refuted that -- the
  * lift was AGC gain carryover inside the chip (see SweepChunk) and survived this
  * change untouched. Kept because an async ISR transacting on a radio mid-read is a
  * defect on its own terms, not because it earned its keep on the bench.

@@ -119,7 +119,7 @@ device_affinity_t ui_devices[] = {
 #if defined(TX_SPECTRUM_SCAN)
   // Ticked by devicesUpdate() in loop(), which runs ABOVE the
   // "connectionState > MODE_STATES" early return -- that is the only seam where
-  // work can happen while the link is intentionally down. See DESIGN.md 3.2.
+  // work can happen while the link is intentionally down. See DESIGN.md 2.2.
   //
   // Affinity 1 (loop core) is load-bearing: this device returns
   // DURATION_IMMEDIATELY while sweeping, and on core 0 deviceTask() would turn
@@ -1051,7 +1051,7 @@ static void EnterBindingMode()
   // function directly, while rx_main.cpp registers the Safely variant. Guarding
   // only the wrapper would cover the Lua/CRSF/menu paths -- which a running scan
   // already blocks, since the plot owns the handset screen -- and miss the one
-  // path a user can actually reach mid-scan. See lib/TxSpectrum/DESIGN.md 9.5.
+  // path a user can actually reach mid-scan. See lib/TxSpectrum/DESIGN.md R3.1a.
   if (connectionState == spectrumScan)
   {
     DBGLN("bind refused: spectrum scan in progress");
