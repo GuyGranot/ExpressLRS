@@ -150,12 +150,26 @@ layout before flashing rather than assumed). Flash 82.2%, `wifi-on-interval: -1`
 This is the **first SX128x validation on the 4.1.0 base** — all prior SX1280 evidence is 4.0.1-era
 — and the first on the split branch for any target other than the Nomad.
 
-> **Recorded as user-reported and not itemized.** The spot-check list put to the user was: folder
-> opens and the plot renders with the trace varying across bins; the CW tone lands on the
-> **2440.4 MHz** bin reading `2440.4MHz`; and R3.2 — RX at zero packets and failsafe for the whole
-> scan, re-linking on reboot-exit. The reply was "boxer verified" without a per-check breakdown, so
-> this entry deliberately does not claim individual pass records the way the N-series entries do.
-> Itemize before leaning on it as PR evidence.
+**SuperG re-verified on the PR branch: ✅ PASSED (2026-07-21).** `test_bins/superg-2400-pr.bin`,
+same build, `betafpv.tx_2400.superg` layout (`radio_busy: 36` + `radio_busy_2: 39` — dual, i.e. the
+**Gemini split** topology, confirmed from the embedded layout before flashing).
+
+**Itemized result, both targets: CW peak lands on the 2440.4 MHz bin.** Correct — the ISM2G4 grid
+is `2400.4 + 1.0n`, so a 2440.000 MHz tone belongs to bin 40 at 2440.4 (§3.6.1), and a whole-number
+reading would have been the suspect one. The Boxer run additionally had the handset **confirmed
+running the updated `elrs.lua`**, so neither result is attributable to a stale script.
+
+> **Why running both mattered.** The split sweep measures two bins per dwell across two radios and
+> interleaves them into a single trace. An off-by-one in that interleave, or a bin-to-radio
+> mis-mapping, would move the peak one bin on the SuperG while the single-radio Boxer stayed
+> correct. Agreement between a single-radio and a split target on the *same* bin is direct evidence
+> the interleave is right — evidence neither target could have produced alone.
+
+> **Scope, stated honestly.** What is itemized above is the CW/peak-frequency check on both targets
+> plus the script provenance on the Boxer. The rest of the spot-check list — trace variation across
+> bins, R3.2 (RX at zero packets and failsafe for the whole scan, re-linking on reboot-exit), and
+> max-hold fill on the split sweep — was not separately reported and is **not** claimed here. The
+> N-series entries above are itemized to a higher standard; do not read these two as equivalent.
 
 **Nomad hardware bring-up on 4.1.0:**
 - ✅ **N2 PASSED (2026-07-18):** trace varies on **both** bands (Config/SetMode trap cleared on

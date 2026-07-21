@@ -26,8 +26,8 @@ stock — R1.1).
 
 Between them they exercise every sweep topology the code supports. Per-target build
 commands and layout picks are in `BUILDING.md`; validation evidence is in `STATUS.md`.
-**Validation is not uniform across the three — see §11.2 for what was proven where, and on which
-base.** The Nomad is the only target validated on 4.1.0 end to end.
+**All three are now validated against `tx-spectrum-pr` itself** — the branch that ships, not an
+ancestor of it. See §11.2 for what was proven where.
 
 ## 1. Goal
 
@@ -1357,7 +1357,7 @@ and dwells for seconds.
 | Target | Radio | Bands | Topology | Feature validated | AGC fix validated |
 |---|---|---|---|---|---|
 | **RadioMaster Nomad** | dual LR1121 | 900 + 2.4 | cross-band | ✅ N0–N5, 4.1.0 | ✅ 2026-07-20 |
-| **BETAFPV SuperG** | dual SX1280 | 2.4 | Gemini split | ✅ P0–P5, **4.0.1** | n/a — LR1121 only |
+| **BETAFPV SuperG** | dual SX1280 | 2.4 | Gemini split | ✅ P0–P5 **4.0.1**; ✅ CW re-check on **`tx-spectrum-pr`** 2026-07-21 | n/a — LR1121 only |
 | **RadioMaster Boxer** internal | single SX1280 | 2.4 | single-radio | ✅ brought up **4.1.0**; ✅ re-verified on **`tx-spectrum-pr`** 2026-07-21 | n/a — LR1121 only |
 
 > **Provenance, corrected 2026-07-20.** An earlier version of this table credited the Boxer
@@ -1368,12 +1368,16 @@ and dwells for seconds.
 > session). The scope of that bring-up was not recorded phase-by-phase, so it is stated here as
 > bring-up rather than as a P0–P5 equivalent.
 >
-> **PR-branch verification, 2026-07-21.** The Boxer internal has now been re-verified against
-> `tx-spectrum-pr` itself, closing the single-radio topology on the branch that ships. The SuperG
-> (Gemini split) is in progress. The TX firmware is byte-identical between
-> `tx-spectrum-nomad-4.1.0` and `tx-spectrum-pr` — the only delta is removing an unused enum
-> member — so the SuperG's 4.0.1-era evidence is expected to carry, but "expected" is not
-> "verified" and the table says so until it is.
+> **PR-branch verification, 2026-07-21 — complete.** Both SX128x targets have been re-checked
+> against `tx-spectrum-pr` itself. A CW carrier peaks on the **2440.4 MHz** bin on the Boxer
+> internal (single-radio) *and* on the SuperG (Gemini split), which is the correct bin: the ISM2G4
+> grid is `2400.4 + 1.0n`, so a 2440.000 MHz tone lands on bin 40 at 2440.4 (§3.6.1).
+>
+> **That the two topologies agree is the substantive part.** The split sweep measures two bins per
+> dwell across two radios and interleaves them into one trace; an off-by-one in that interleave, or
+> a radio/bin mis-mapping, would shift the peak by a bin on the SuperG while leaving the
+> single-radio Boxer correct. Both landing on the same bin is direct evidence the interleave is
+> right — which a single-target test could not have shown.
 
 Off-hardware gates: `pio test -e native -f test_txspectrum -f test_spectrum` (24/24) and
 `lua/mockup/simcheck.py`.
