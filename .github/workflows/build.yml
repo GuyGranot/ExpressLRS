@@ -82,16 +82,18 @@ jobs:
         platformio pkg update
         PLATFORMIO_BUILD_FLAGS="-DRegulatory_Domain_ISM_2400" pio test -e native
 
-  # The TX spectrum analyzer (-DTX_SPECTRUM_SCAN) is off by default and is not
-  # set by any target env, so the build matrix below only ever compiles it OUT.
-  # That is by design -- flag-off builds are byte-identical to stock -- but it
-  # also means nothing else in CI ever compiles the feature's source, and it
-  # would bit-rot silently the first time Radio/hwTimer/CRSF changed shape.
+  # The spectrum analyzers (-DTX_SPECTRUM_SCAN / -DRX_SPECTRUM_SCAN) are off by
+  # default and are not set by any target env, so the build matrix below only
+  # ever compiles them OUT. That is by design -- flag-off builds are
+  # byte-identical to stock -- but it also means nothing else in CI ever compiles
+  # the features' source, and they would bit-rot silently the first time
+  # Radio/hwTimer/CRSF changed shape.
   #
   # One target per radio driver, because the sweep differs between them: the
   # LR1121 path does a per-bin STDBY_RC reset and a flat settle, the SX128x path
-  # does not. These are compile checks only and are deliberately not uploaded as
-  # artifacts -- nothing here ships.
+  # does not. Both the TX-side (handset transport) and RX-side (FC/host UART
+  # transport) engines are exercised. These are compile checks only and are
+  # deliberately not uploaded as artifacts -- nothing here ships.
   spectrum-feature-build:
     needs: test
     runs-on: ubuntu-latest
@@ -103,6 +105,10 @@ jobs:
             flags: "-DRegulatory_Domain_FCC_915 -DTX_SPECTRUM_SCAN"
           - target: Unified_ESP32_2400_TX_via_UART
             flags: "-DRegulatory_Domain_ISM_2400 -DTX_SPECTRUM_SCAN"
+          - target: Unified_ESP32_LR1121_RX_via_UART
+            flags: "-DRegulatory_Domain_FCC_915 -DRX_SPECTRUM_SCAN"
+          - target: Unified_ESP32_2400_RX_via_UART
+            flags: "-DRegulatory_Domain_ISM_2400 -DRX_SPECTRUM_SCAN"
     steps:
     - name: Checkout
       uses: actions/checkout@v6

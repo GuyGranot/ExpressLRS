@@ -9,6 +9,9 @@
 #include "logging.h"
 
 extern void reset_into_bootloader();
+#if defined(RX_SPECTRUM_SCAN)
+extern void RxSpectrumStart(uint8_t band);
+#endif
 
 RXEndpoint::RXEndpoint()
     : RxTxEndpoint(CRSF_ADDRESS_CRSF_RECEIVER)
@@ -41,6 +44,16 @@ bool RXEndpoint::handleRaw(const crsf_header_t *message)
             config.SetModelId(payload[2]);
             return true;
         }
+#if defined(RX_SPECTRUM_SCAN)
+        // Non CRSF, dest=s src=p -> enter receive-only spectrum scan.
+        // payload[2] selects the antenna port/band (0=900, 1=2.4, 2=both).
+        // Drops the RC link; exits by resetting the receiver.
+        if (payload[0] == 's' && payload[1] == 'p')
+        {
+            RxSpectrumStart(payload[2]);
+            return true;
+        }
+#endif
     }
     return false;
 }

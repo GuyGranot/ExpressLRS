@@ -46,7 +46,7 @@ typedef enum
     NO_CONFIG_SAVE_STATES,
     wifiUpdate,
     serialUpdate,
-#if defined(TX_SPECTRUM_SCAN)
+#if defined(TX_SPECTRUM_SCAN) || defined(RX_SPECTRUM_SCAN)
     // Receive-only spectrum sweep; halts the link, exits by reboot. Placed here
     // so it is > MODE_STATES (halt RF), > NO_CONFIG_SAVE_STATES (block config
     // commits) and < FAILURE_STATES (not a fault) -- i.e. identical semantics to
