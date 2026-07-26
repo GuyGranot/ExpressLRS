@@ -25,6 +25,7 @@ a text peak readout instead.
 """
 
 import argparse
+import json
 import sys
 import time
 
@@ -292,15 +293,24 @@ def run_selftest():
     return 0
 
 
+def band_peak(b):
+    """(index, dBm, live_bin_count) of the loudest live bin in band b, or None."""
+    vals = [(i, v) for i, v in enumerate(b["live"]) if v is not None]
+    if not vals:
+        return None
+    pi, pv = max(vals, key=lambda t: t[1])
+    return pi, pv, len(vals)
+
+
 def peak_text(store):
     lines = []
     for bid, b in store.bands.items():
-        vals = [(i, v) for i, v in enumerate(b["live"]) if v is not None]
-        if not vals:
+        pk = band_peak(b)
+        if pk is None:
             continue
-        pi, pv = max(vals, key=lambda t: t[1])
+        pi, pv, n = pk
         lines.append(f"{bid}: peak {pv:>4} dBm @ {store.bin_freq_mhz(b, pi):8.1f} MHz "
-                     f"({len(vals)}/{b['total']} bins)")
+                     f"({n}/{b['total']} bins)")
     return "  |  ".join(lines) if lines else "(waiting for data...)"
 
 
@@ -329,6 +339,11 @@ def run_live(args):
             print("matplotlib not available; falling back to text mode "
                   "(pip install matplotlib for a plot).")
 
+    log_f = None
+    if args.log:
+        log_f = open(args.log, "w")
+        print(f"logging decoded frames to {args.log} (JSON-lines; replay with --replay)")
+    t0 = time.time()
     last_txt = 0.0
     try:
         while True:
@@ -343,18 +358,62 @@ def run_live(args):
                     dec = decode_spectrum_payload(vp)
                     if dec is not None:
                         store.update(dec)
+                        if log_f is not None:
+                            log_f.write(json.dumps(
+                                {"t": round(time.time() - t0, 4), **dec}) + "\n")
             if plot is not None:
                 if not plot.pump():
                     break
-            else:
-                now = time.time()
-                if now - last_txt >= 0.25:
-                    print("\r" + peak_text(store).ljust(100), end="", flush=True)
-                    last_txt = now
+            now = time.time()
+            if now - last_txt >= 0.25:
+                txt = peak_text(store)
+                if plot is not None:
+                    print(txt)
+                else:
+                    print("\r" + txt.ljust(100), end="", flush=True)
+                last_txt = now
     except KeyboardInterrupt:
         print("\ninterrupted.")
     finally:
         ser.close()
+        if log_f is not None:
+            log_f.close()
+    return 0
+
+
+def run_replay(args):
+    """Replay a logged capture into the same store/plot pipeline -- no hardware."""
+    store = TraceStore()
+    records = []
+    with open(args.replay) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(json.loads(line))
+            except ValueError:
+                continue
+    if not records:
+        print(f"no decoded frames found in {args.replay}")
+        return 1
+    print(f"replaying {len(records)} frames from {args.replay}")
+
+    plot = None if args.no_plot else _try_make_plot(store)
+    prev_t = records[0].get("t", 0.0)
+    for rec in records:
+        dec = {k: v for k, v in rec.items() if k != "t"}
+        store.update(dec)
+        if plot is not None:
+            if not plot.pump():
+                break
+            # pace to the original timing, capped so long idle gaps don't drag
+            dt = min(max(rec.get("t", prev_t) - prev_t, 0.0), 0.2)
+            prev_t = rec.get("t", prev_t)
+            time.sleep(dt)
+    print(peak_text(store))
+    if plot is not None:
+        plot.hold()  # block until the window is closed
     return 0
 
 
@@ -370,6 +429,7 @@ def _try_make_plot(store):
             self.fig, self.ax = plt.subplots(1, 2, figsize=(12, 4))
             self.fig.suptitle("ELRS RX spectrum (live = solid, max-hold = dashed)")
             self.lines = {}
+            self.annots = {}
             self.order = ["900MHz", "2.4GHz"]
             for a, name in zip(self.ax, self.order):
                 a.set_title(name)
@@ -397,11 +457,25 @@ def _try_make_plot(store):
                     ll, ml = self.lines[name]
                     ll.set_data(xs, live)
                     ml.set_data(xs, mx)
+                pk = band_peak(b)
+                if pk is not None:
+                    pi, pv, _ = pk
+                    if name not in self.annots:
+                        self.annots[name] = a.annotate(
+                            "", xy=(0.02, 0.95), xycoords="axes fraction",
+                            fontsize=9, va="top", ha="left",
+                            bbox=dict(boxstyle="round", fc="w", alpha=0.7))
+                    self.annots[name].set_text(
+                        f"peak {pv} dBm @ {store.bin_freq_mhz(b, pi):.1f} MHz")
                 a.relim()
                 a.autoscale_view()
             self.fig.canvas.draw_idle()
             self.fig.canvas.flush_events()
             return plt.fignum_exists(self.fig.number)
+
+        def hold(self):
+            plt.ioff()
+            plt.show()  # block until the window is closed
 
     return Plot()
 
@@ -414,14 +488,21 @@ def main(argv=None):
     ap.add_argument("--band", default="both", choices=list(BAND_NAMES.keys()),
                     help="antenna port / band: 900, 2g4, both (default both)")
     ap.add_argument("--no-plot", action="store_true", help="text peak readout only")
+    ap.add_argument("--log", metavar="FILE",
+                    help="append each decoded frame (JSON-lines, timestamped) to FILE "
+                         "for replay / offline processing")
+    ap.add_argument("--replay", metavar="FILE",
+                    help="replay a previously logged capture (no hardware, no trigger)")
     ap.add_argument("--selftest", action="store_true",
                     help="run the codec round-trip test and exit (no hardware)")
     args = ap.parse_args(argv)
 
     if args.selftest:
         return run_selftest()
+    if args.replay:
+        return run_replay(args)
     if not args.port:
-        ap.error("--port is required (or use --selftest)")
+        ap.error("--port is required (or use --selftest or --replay)")
     return run_live(args)
 
 

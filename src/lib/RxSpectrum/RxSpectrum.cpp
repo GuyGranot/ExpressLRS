@@ -13,6 +13,11 @@
 #include "FHSS.h"
 #include "POWERMGNT.h"
 #include "hwTimer.h"
+#if defined(PLATFORM_ESP32)
+#include <WiFi.h>
+#elif defined(PLATFORM_ESP8266)
+#include <ESP8266WiFi.h>
+#endif
 // NB: no #include "hardware.h" -- it has no include guard and arrives via
 // common.h -> targets.h. Including it directly is a redefinition error.
 
@@ -419,13 +424,45 @@ static int event()
 
     if (!running)
     {
-        // Keep the radio alive -- it is the instrument -- but stop the telemetry-TX
-        // timer (R3.1a) and take exclusive ownership of the radio (I3).
+        // Invariant (DESIGN.md R3, extended to the ESP radio): never open the RX
+        // front-end while ANY transmitter is active -- and the WiFi AP is one. The
+        // WIFI device also tears the AP down on this same connectionState change,
+        // but that relies on it being dispatched before us in ui_devices[]; do it
+        // explicitly here, before any radio access, so the invariant holds no
+        // matter the device order or a future state-enum renumber. Idempotent: the
+        // WIFI device reconciles its own wifiStarted flag on the same event, so
+        // nothing is left stale.
+#if defined(PLATFORM_ESP32) || defined(PLATFORM_ESP8266)
+        WiFi.disconnect(true);
+        WiFi.mode(WIFI_OFF);
+#if defined(PLATFORM_ESP8266)
+        WiFi.forceSleepBegin();
+#endif
+#endif
+        // Stop the telemetry-TX timer first (R3.1a) so nothing can key the PA while
+        // the radio is brought up.
         hwTimer::stop();
+
+        // Full radio re-init, ONCE, at scan entry. This is the only thing that
+        // recovers the LR1121 from a prior Radio.End() -- SLEEP + hal.end() (SPI
+        // torn down) -- which is exactly the state the WiFi AP leaves it in; it also
+        // normalises a half-configured link. Entry is the one place the prior radio
+        // state is unknown, so pay the reset/calibration cost here and here only.
+        // The in-sweep BeginScan() calls (band flip, re-trigger) deliberately stay
+        // on the lightweight Config() reconfigure, so "both" mode stays responsive
+        // and the RSSI baseline doesn't drift between sweeps. Mirrors the boot and
+        // WiFi-return call (rx_main.cpp / devWIFI.cpp): calibrate over the FHSS band.
+        Radio.Begin(FHSSgetMinimumFreq(), FHSSgetMaximumFreq());
+
+        // Re-assert isolation AFTER Begin(): Begin() reprograms the chip DIO/IRQ
+        // mapping and re-inits the HAL (which re-attaches the MCU RXdone ISR), so
+        // detach DIO1 last (I3) to keep exclusive, receive-only ownership of the
+        // radio and stop anything re-arming the tock timer.
         SweepIsolateRadio();
         BeginScan();
         running = true;
     }
+
     return DURATION_IMMEDIATELY;
 }
 
