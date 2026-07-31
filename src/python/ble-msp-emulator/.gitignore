@@ -1,0 +1,5 @@
+.venv/
+*.log
+smoke_out.txt
+smoke_err.txt
+__pycache__/

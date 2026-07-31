@@ -1,0 +1,3 @@
+# sb_protocol/link_sim/selftest are pure stdlib. Only capture_fc.py needs a
+# dependency, and it acts as a BLE central, which Windows does support.
+bleak>=0.22
