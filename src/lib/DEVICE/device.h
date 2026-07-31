@@ -17,6 +17,7 @@ enum deviceEvent_t {
     EVENT_EXIT_BIND_MODE = 1 << 4,
     EVENT_MODEL_SELECTED = 1 << 5,
     EVENT_CONNECTION_CHANGED = 1 << 6,
+    EVENT_BLE_MSP = 1 << 7, // start the SpeedyBee BLE MSP bridge (TX_BLE_MSP)
 
     EVENT_CONFIG_MODEL_CHANGED = 1 << 8,
     EVENT_CONFIG_VTX_CHANGED = 1 << 9,
