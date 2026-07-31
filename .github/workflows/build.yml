@@ -82,6 +82,73 @@ jobs:
         platformio pkg update
         PLATFORMIO_BUILD_FLAGS="-DRegulatory_Domain_ISM_2400" pio test -e native
 
+    # The Python responder in ble-msp-emulator is the spec the C++ one is
+    # checked against, so it has to stay honest too. Pure stdlib, no hardware.
+    - name: Run BLE MSP protocol selftest
+      run: |
+        cd src/python/ble-msp-emulator
+        python selftest.py
+
+  # -DTX_BLE_MSP is off by default and no target env sets it, so every build
+  # below compiles the feature OUT. That is the point -- an ordinary image is
+  # unaffected -- but it also means nothing else in CI ever compiles the
+  # feature's source, and it would bit-rot silently the first time the radio,
+  # router or device framework changed shape.
+  #
+  # Both ESP32 TX radio families, because the session-rate hop the bridge uses
+  # differs between them. The feature is TX-and-ESP32 only by construction; the
+  # regular build matrix covers the flag-off case on everything else.
+  #
+  # Do NOT add -DRegulatory_Domain_ISM_2400 here. PLATFORMIO_BUILD_FLAGS reaches
+  # build_flags.py as a single string, and it drops every flag in that string
+  # when it strips ISM_2400 (which SX128x targets define for themselves anyway).
+  # The build then succeeds with the feature compiled out, which is the one
+  # outcome this job exists to make impossible.
+  ble-msp-feature-build:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: Unified_ESP32_LR1121_TX_via_UART
+            flags: "-DRegulatory_Domain_FCC_915 -DTX_BLE_MSP"
+          - target: Unified_ESP32_2400_TX_via_UART
+            flags: "-DTX_BLE_MSP"
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v6
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.10'
+
+    - name: Cache pip
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ matrix.target }}
+
+    - name: Install PlatformIO
+      run: |
+        python -m pip install --upgrade pip
+        pip install platformio
+        pip install wheel
+
+    - name: Cache PlatformIO
+      uses: actions/cache@v5
+      with:
+        path: ~/.platformio
+        key: ${{ runner.os }}-platformio
+
+    - name: Build with the BLE MSP bridge enabled
+      run: |
+        cd src
+        platformio pkg install --platform native
+        platformio pkg update
+        PLATFORMIO_BUILD_FLAGS="${{ matrix.flags }}" pio run -e ${{ matrix.target }}
+
   targets:
     needs:
       - build-and-validate-artifacts
