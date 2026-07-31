@@ -49,6 +49,13 @@
 
 ### OTHER OPTIONS: ###
 
+# EXPERIMENTAL, TX + ESP32 only. Presents a SpeedyBee-compatible BLE
+# peripheral on the TX module so the SpeedyBee phone app can configure a
+# flight controller that has no Bluetooth of its own, tunnelling MSP over the
+# ELRS link. The RF link stays up (unlike BLE Joystick); started from the
+# ELRS Lua script, never at boot. See lib/BLEMSP/DESIGN.md.
+#-DTX_BLE_MSP
+
 -DAUTO_WIFI_ON_INTERVAL=60
 #-DHOME_WIFI_SSID=""
 #-DHOME_WIFI_PASSWORD=""
