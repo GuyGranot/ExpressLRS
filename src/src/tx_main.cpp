@@ -23,6 +23,9 @@
 #include "devThermal.h"
 #include "devPDET.h"
 #include "devBackpack.h"
+#if defined(USE_BLE_MSP)
+#include "devBleMsp.h"
+#endif
 #else
 // Fake functions for 8285
 void checkBackpackUpdate() {}
@@ -98,6 +101,15 @@ TXOTAConnector otaConnector;
 TXUSBConnector usbConnector;
 CRSFParser crsfParser;
 
+#if defined(USE_BLE_MSP) && defined(PLATFORM_ESP32)
+// Defined here rather than in lib/BLEMSP so the BLE lib depends only on shared
+// libraries; tx_main is never scanned for receiver builds
+bool TxUplinkBusy()
+{
+  return otaConnector.uplinkBusy();
+}
+#endif
+
 device_affinity_t ui_devices[] = {
   {&Handset_device, 1},
   {&LED_device, 0},
@@ -109,6 +121,11 @@ device_affinity_t ui_devices[] = {
 #if defined(PLATFORM_ESP32)
   {&Backpack_device, 0},
   {&BLE_device, 0},
+#if defined(USE_BLE_MSP)
+  // Affinity 1 is load-bearing: the pump calls crsfRouter.processMessage(),
+  // which the rest of the codebase only ever invokes from the loop core
+  {&BleMsp_device, 1},
+#endif
 #if !defined(PLATFORM_ESP32_C3)
   {&Screen_device, 0},
   {&Gsensor_device, 0},

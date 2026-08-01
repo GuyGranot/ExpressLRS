@@ -38,6 +38,13 @@ void TxRequestSessionRate(uint8_t rateIndex);
  * the rate the TX just left.
  */
 bool TxSessionRateIsHome();
+
+/**
+ * @brief True while an OTA uplink message is in flight or still queued; feed
+ * one MSP frame at a time and only when this is false (TXOTAConnector has no
+ * NAK, so overrunning its queue is a silent whole-frame loss).
+ */
+bool TxUplinkBusy();
 #endif
 #endif
 
