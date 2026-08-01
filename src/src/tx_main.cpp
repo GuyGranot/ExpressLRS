@@ -7,6 +7,7 @@
 #include "msptypes.h"
 #include "stubborn_receiver.h"
 #include "stubborn_sender.h"
+#include "rxtx_intf.h"
 
 #include "devHandset.h"
 #include "devADC.h"
@@ -333,6 +334,35 @@ static bool ICACHE_RAM_ATTR ProcessDownlinkPacket(SX12xxDriverCommon::rx_status 
   return true;
 }
 
+#if defined(USE_BLE_MSP) && defined(PLATFORM_ESP32)
+// Where a session rate is taking the radio, or TX_SESSION_RATE_NONE when the
+// configured rate is in charge. Written from the loop core, read from the
+// packet timer path.
+static volatile uint8_t sessionRate = TX_SESSION_RATE_NONE;
+static uint8_t sessionRateRequest = TX_SESSION_RATE_NONE;
+
+/**
+ * @brief The rate the TX intends to be running, which is not always the
+ * configured one.
+ *
+ * Sync packets advertise this while spamming, so the receiver is told where the
+ * TX is going before it gets there. A session rate hops without touching
+ * config, so while one runs, intended and configured diverge.
+ */
+static uint8_t ICACHE_RAM_ATTR intendedRate()
+{
+  if (sessionRate != TX_SESSION_RATE_NONE)
+  {
+    return sessionRate;
+  }
+  return config.GetRate();
+}
+#else
+// Changing rate is itself a config change, so with no session mechanism built
+// in these are the same thing and this is the config read it replaced.
+static inline uint8_t intendedRate() { return config.GetRate(); }
+#endif
+
 expresslrs_tlm_ratio_e ICACHE_RAM_ATTR UpdateTlmRatioEffective()
 {
   expresslrs_tlm_ratio_e ratioConfigured = (expresslrs_tlm_ratio_e)config.GetTlm();
@@ -382,7 +412,7 @@ expresslrs_tlm_ratio_e ICACHE_RAM_ATTR UpdateTlmRatioEffective()
 void ICACHE_RAM_ATTR GenerateSyncPacketData(OTA_Sync_s * const syncPtr)
 {
   const uint8_t SwitchEncMode = config.GetSwitchMode();
-  const uint8_t Index = (syncSpamCounter) ? config.GetRate() : ExpressLRS_currAirRate_Modparams->index;
+  const uint8_t Index = (syncSpamCounter) ? intendedRate() : ExpressLRS_currAirRate_Modparams->index;
 
   if (syncSpamCounter)
     --syncSpamCounter;
@@ -799,6 +829,70 @@ static void ChangeRadioParams()
   ModelUpdatePending = false;
   commitRadioRate(config.GetRate());
 }
+
+#if defined(USE_BLE_MSP) && defined(PLATFORM_ESP32)
+void TxRequestSessionRate(const uint8_t rateIndex)
+{
+  sessionRateRequest = rateIndex;
+}
+
+bool TxSessionRateIsHome()
+{
+  // Both counters, not just the rate: syncSpamCounterAfterRateChange is the
+  // post-hop warning still going out, and rebooting while it drains strands
+  // the receiver on the rate we just left.
+  return ExpressLRS_currAirRate_Modparams->index == config.GetRate() &&
+         syncSpamCounter == 0 && syncSpamCounterAfterRateChange == 0;
+}
+
+/**
+ * @brief Move the radio to the requested session rate, or back to the
+ * configured one, following the protocol a Lua rate change uses.
+ *
+ * Spam sync packets on the OLD rate so the receiver learns the new one before
+ * we move, wait out the in-flight packet, hold commitInProgress across the
+ * change, then spam again. Calling SetRFLinkRate bare instead turns a rate
+ * change into a dropout and a reacquisition hunt. config is deliberately
+ * untouched, which is why ConfigChangeCommit's path cannot be reused.
+ */
+static void UpdateSessionRate()
+{
+  static bool receiverWarned = false;
+
+  const uint8_t target =
+      sessionRateRequest == TX_SESSION_RATE_NONE ? config.GetRate() : sessionRateRequest;
+
+  // Publish where the radio is headed so sync packets advertise the target
+  // rather than the configured rate. Every data uplink requests a sync packet;
+  // advertising the configured rate while the radio runs elsewhere sends the
+  // receiver away to hunt after every exchange.
+  sessionRate = target == config.GetRate() ? TX_SESSION_RATE_NONE : target;
+
+  if (ExpressLRS_currAirRate_Modparams->index == target)
+  {
+    receiverWarned = false;
+    return;
+  }
+
+  // Warn the receiver on the rate it is still listening on
+  if (!receiverWarned)
+  {
+    syncSpamCounter = syncSpamAmount;
+    receiverWarned = true;
+    return;
+  }
+  if (syncSpamCounter > 0)
+  {
+    return; // still warning
+  }
+
+  beginRadioTransition();
+  commitRadioRate(target);
+  commitInProgress = false;
+  syncSpamCounterAfterRateChange = syncSpamAmountAfterRateChange;
+  receiverWarned = false;
+}
+#endif
 
 void ModelUpdateReq()
 {
@@ -1548,6 +1642,9 @@ void loop()
 
   CheckReadyToSend();
   CheckConfigChangePending();
+#if defined(USE_BLE_MSP) && defined(PLATFORM_ESP32)
+  UpdateSessionRate();
+#endif
   DynamicPower_Update(now);
   VtxPitmodeSwitchUpdate();
   checkSendLinkStatsToHandset(now);
