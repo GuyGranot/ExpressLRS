@@ -11,6 +11,9 @@
 #include "helpers.h"
 #include "deferred.h"
 #include "msptypes.h"
+#if defined(USE_BLE_MSP) && defined(PLATFORM_ESP32)
+#include "devBleMsp.h"
+#endif
 
 #define STR_LUA_ALLAUX         "AUX1;AUX2;AUX3;AUX4;AUX5;AUX6;AUX7;AUX8;AUX9;AUX10"
 
@@ -212,6 +215,19 @@ static commandParameter luaBLEJoystick = {
     lcsIdle, // step
     STR_EMPTYSPACE
 };
+#if defined(USE_BLE_MSP)
+// Unlike BLE Joystick this keeps the RF link up, so it never becomes a mode
+// state. Its info line doubles as the status readout (see BleMspStatus).
+static folderParameter luaBleMspFolder = {
+    {"BLE MSP", CRSF_FOLDER}
+};
+
+static commandParameter luaBLEMsp = {
+    {"Start", CRSF_COMMAND},
+    lcsIdle, // step
+    STR_EMPTYSPACE
+};
+#endif
 #endif
 
 //----------------------------VTX ADMINISTRATOR------------------
@@ -465,13 +481,27 @@ static void setBleJoystickMode()
   setConnectionState(bleJoystick);
 }
 
+// The default cancel: nothing to put back, so go straight out
+static void rebootOnCancel()
+{
+  scheduleRebootTime(400);
+}
+
 void TXModuleEndpoint::handleWifiBle(propertiesCommon *item, uint8_t arg)
 {
   commandParameter *cmd = (commandParameter *)item;
   void (*setTargetState)();
-  connectionState_e targetState;
   const char *textConfirm;
   const char *textRunning;
+  // A command here is "running" while the module sits in the mode state it
+  // switched to, and cancelling reboots out of it. The three hooks below cover
+  // commands that are not mode states: isRunning() replaces the state test,
+  // onCancel replaces the reboot, and liveStatus re-renders textRunning on
+  // every poll instead of echoing the text stored at startup.
+  connectionState_e targetState = FAILURE_STATES; // sentinel, never held
+  void (*onCancel)() = &rebootOnCancel;
+  bool (*isRunning)() = nullptr;
+  bool liveStatus = false;
   if ((void *)item == (void *)&luaWebUpdate)
   {
     setTargetState = &setWifiUpdateMode;
@@ -479,6 +509,19 @@ void TXModuleEndpoint::handleWifiBle(propertiesCommon *item, uint8_t arg)
     textRunning = "WiFi Running...";
     targetState = wifiUpdate;
   }
+#if defined(USE_BLE_MSP) && defined(PLATFORM_ESP32)
+  else if ((void *)item == (void *)&luaBLEMsp)
+  {
+    setTargetState = &BleMspStart;
+    textConfirm = "Start BLE MSP?";
+    textRunning = BleMspStatus(); // live: "Adv w0" / "Con+ w12 u12 r12 x0"
+    // The RF link stays up, so BLE MSP never enters a mode state and the
+    // default test cannot see it
+    isRunning = &BleMspIsRunning;
+    onCancel = &BleMspStop;
+    liveStatus = true;
+  }
+#endif
   else
   {
     setTargetState = &setBleJoystickMode;
@@ -486,6 +529,8 @@ void TXModuleEndpoint::handleWifiBle(propertiesCommon *item, uint8_t arg)
     textRunning = "Joystick Running...";
     targetState = bleJoystick;
   }
+
+  const bool running = isRunning ? isRunning() : connectionState == targetState;
 
   switch ((commandStep_e)arg)
   {
@@ -498,20 +543,41 @@ void TXModuleEndpoint::handleWifiBle(propertiesCommon *item, uint8_t arg)
       // fallthrough (clicking while not connected goes right to exectute)
 
     case lcsConfirmed:
-      sendCommandResponse(cmd, lcsExecuting, textRunning);
-      setTargetState();
+      if (liveStatus)
+      {
+        // A self-reporting command may refuse outright (BLE MSP will not start
+        // while armed). Run it first so the reply carries the outcome: its
+        // textRunning points at the buffer the command writes its status into.
+        setTargetState();
+        sendCommandResponse(cmd, lcsExecuting, textRunning);
+      }
+      else
+      {
+        sendCommandResponse(cmd, lcsExecuting, textRunning);
+        setTargetState();
+      }
       break;
 
     case lcsCancel:
       sendCommandResponse(cmd, lcsIdle, STR_EMPTYSPACE);
-      if (connectionState == targetState)
+      if (running)
       {
-        scheduleRebootTime(400);
+        onCancel(); // may defer the reboot; see rebootOnCancel
       }
       break;
 
     default: // LUACMDSTEP_NONE on load, LUACMDSTEP_EXECUTING (our lua) or LUACMDSTEP_QUERY (Crossfire Config)
-      sendCommandResponse(cmd, cmd->step, cmd->info);
+      // While a self-reporting command is running, answer each poll with its
+      // current text rather than echoing the stored one, so the Lua popup
+      // shows live status instead of freezing on the message from startup
+      if (liveStatus && running)
+      {
+        sendCommandResponse(cmd, lcsExecuting, textRunning);
+      }
+      else
+      {
+        sendCommandResponse(cmd, cmd->step, cmd->info);
+      }
       break;
   }
 }
@@ -967,6 +1033,10 @@ void TXModuleEndpoint::registerParameters()
 
   #if defined(PLATFORM_ESP32)
   registerParameter(&luaBLEJoystick, wifiBleCallback);
+  #if defined(USE_BLE_MSP)
+  registerParameter(&luaBleMspFolder);
+  registerParameter(&luaBLEMsp, wifiBleCallback, luaBleMspFolder.common.id);
+  #endif
   #endif
 
   if (HAS_RADIO) {
