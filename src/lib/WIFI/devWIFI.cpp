@@ -979,12 +979,31 @@ static void WebUpdateGetFirmware(AsyncWebServerRequest *request) {
   request->send(response);
 }
 
+static void startContinuousWave(SX12XX_Radio_Number_t radio, bool setSubGHz) {
+  UNUSED(setSubGHz);
+
+  Radio.TXdoneCallback = [](){};
+  Radio.Begin(FHSSgetMinimumFreq(), FHSSgetMaximumFreq());
+
+  POWERMGNT::init();
+  POWERMGNT::setPower(POWERMGNT::getMinPower());
+
+#if defined(RADIO_LR1121)
+  Radio.startCWTest(setSubGHz ? FHSSconfig->freq_center : FHSSconfigDualBand->freq_center, radio);
+#else
+  Radio.startCWTest(FHSSconfig->freq_center, radio);
+#if defined(RADIO_SX127X)
+  deferExecutionMillis(50, [radio](){ Radio.cwRepeat(radio); });
+#endif
+#endif
+}
+
 static void HandleContinuousWave(AsyncWebServerRequest *request) {
   if (request->hasArg("radio")) {
     SX12XX_Radio_Number_t radio = request->arg("radio").toInt() == 1 ? SX12XX_Radio_1 : SX12XX_Radio_2;
 
-#if defined(RADIO_LR1121)
     bool setSubGHz = false;
+#if defined(RADIO_LR1121)
     setSubGHz = request->arg("subGHz").toInt() == 1;
 #endif
 
@@ -992,20 +1011,7 @@ static void HandleContinuousWave(AsyncWebServerRequest *request) {
     response->addHeader("Connection", "close");
     request->send(response);
 
-    Radio.TXdoneCallback = [](){};
-    Radio.Begin(FHSSgetMinimumFreq(), FHSSgetMaximumFreq());
-
-    POWERMGNT::init();
-    POWERMGNT::setPower(POWERMGNT::getMinPower());
-
-#if defined(RADIO_LR1121)
-    Radio.startCWTest(setSubGHz ? FHSSconfig->freq_center : FHSSconfigDualBand->freq_center, radio);
-#else
-    Radio.startCWTest(FHSSconfig->freq_center, radio);
-#if defined(RADIO_SX127X)
-    deferExecutionMillis(50, [radio](){ Radio.cwRepeat(radio); });
-#endif
-#endif
+    startContinuousWave(radio, setSubGHz);
   } else {
     int radios = (GPIO_PIN_NSS_2 == UNDEF_PIN) ? 1 : 2;
     request->send(200, "application/json", String("{\"radios\": ") + radios + ", \"center\": "+ FHSSconfig->freq_center +
