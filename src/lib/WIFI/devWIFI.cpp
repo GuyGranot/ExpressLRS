@@ -1,4 +1,5 @@
 #include "device.h"
+#include "UpdateTransport.h"
 
 #include "deferred.h"
 
@@ -103,6 +104,89 @@ void setWifiUpdateMode()
   InBindingMode = false;
   setConnectionState(wifiUpdate);
 }
+
+#if defined(TARGET_RX) && defined(PLATFORM_ESP32) && defined(USE_BLE_MSP)
+static portMUX_TYPE transportMux = portMUX_INITIALIZER_UNLOCKED;
+static updateTransport_e transportOwner = TRANSPORT_UNCLAIMED;
+// single-word flags crossed between the loop core and the async/BLE tasks
+static volatile bool dualDiscovery = false;
+static volatile bool bleTeardownDone = true;
+
+void setWifiUpdateMode(updateExposure_e exposure)
+{
+  if (exposure == EXPOSURE_WIFI_AND_BLE)
+  {
+    dualDiscovery = true;
+    bleTeardownDone = false;
+  }
+  setWifiUpdateMode();
+}
+
+updateTransport_e getUpdateTransport()
+{
+  portENTER_CRITICAL(&transportMux);
+  const updateTransport_e owner = transportOwner;
+  portEXIT_CRITICAL(&transportMux);
+  return owner;
+}
+
+bool claimUpdateTransport(updateTransport_e owner)
+{
+  portENTER_CRITICAL(&transportMux);
+  if (transportOwner == TRANSPORT_UNCLAIMED)
+  {
+    transportOwner = owner;
+  }
+  const bool owns = transportOwner == owner;
+  portEXIT_CRITICAL(&transportMux);
+  return owns;
+}
+
+// Input permission is derived from the owner, so a winning claim revokes the
+// loser's input in the same atomic step; the loser cannot slip a frame in
+// between losing and being torn down
+bool updateTransportAcceptsWifiInput() { return getUpdateTransport() != TRANSPORT_BLE; }
+bool updateTransportAcceptsBleInput() { return getUpdateTransport() != TRANSPORT_WIFI; }
+bool updateDualDiscovery() { return dualDiscovery; }
+void updateBleTeardownComplete() { bleTeardownDone = true; }
+
+void claimUpdateWifiIfSta()
+{
+  // in AP mode association is the ownership trigger and requests may be
+  // captive-portal probes; on the home network a request is always deliberate
+  if (wifiMode == WIFI_STA)
+  {
+    claimUpdateTransport(TRANSPORT_WIFI);
+  }
+}
+
+static void logUpdateHeap(const char *tag)
+{
+  DBGLN("BLEMSP %s: heap %u min %u largest %u", tag, ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
+}
+
+// STA-mode WiFi ownership hooks for the web server; in AP mode (or with the
+// feature off) the handlers run exactly as registered
+static ArRequestHandlerFunction claimingHandler(ArRequestHandlerFunction handler)
+{
+  return [handler](AsyncWebServerRequest *request) {
+    claimUpdateWifiIfSta();
+    handler(request);
+  };
+}
+
+static ArJsonRequestHandlerFunction claimingJsonHandler(ArJsonRequestHandlerFunction handler)
+{
+  return [handler](AsyncWebServerRequest *request, JsonVariant &json) {
+    claimUpdateWifiIfSta();
+    handler(request, json);
+  };
+}
+#else
+// identity passthroughs, so registration sites read the same with the feature off
+template <typename H> static H claimingHandler(H handler) { return handler; }
+template <typename H> static H claimingJsonHandler(H handler) { return handler; }
+#endif
 
 /** Is this an IP? */
 static boolean isIp(const String& str)
@@ -848,6 +932,9 @@ static void WebUploadResponseHandler(AsyncWebServerRequest *request) {
 static void WebUploadDataHandler(AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
   force_update = force_update || request->hasArg("force");
   if (index == 0) {
+    // the body handler runs before the request handler, so an upload claims
+    // the session at its first chunk, not at its response
+    claimUpdateWifiIfSta();
     #if defined(TARGET_TX) && defined(PLATFORM_ESP32)
       WifiJoystick::StopJoystickService();
     #endif
@@ -979,6 +1066,12 @@ static void WebUpdateGetFirmware(AsyncWebServerRequest *request) {
   request->send(response);
 }
 
+#if defined(TARGET_RX) && defined(PLATFORM_ESP32) && defined(USE_BLE_MSP)
+static bool cwPending = false;
+static SX12XX_Radio_Number_t cwPendingRadio;
+static bool cwPendingSubGHz;
+#endif
+
 static void startContinuousWave(SX12XX_Radio_Number_t radio, bool setSubGHz) {
   UNUSED(setSubGHz);
 
@@ -1011,6 +1104,17 @@ static void HandleContinuousWave(AsyncWebServerRequest *request) {
     response->addHeader("Connection", "close");
     request->send(response);
 
+#if defined(TARGET_RX) && defined(PLATFORM_ESP32) && defined(USE_BLE_MSP)
+    if (!bleTeardownDone)
+    {
+      // the BLE stack is still winding down after losing the session; start
+      // transmitting only once the RF path is exclusively ours
+      cwPendingRadio = radio;
+      cwPendingSubGHz = setSubGHz;
+      cwPending = true;
+      return;
+    }
+#endif
     startContinuousWave(radio, setSubGHz);
   } else {
     int radios = (GPIO_PIN_NSS_2 == UNDEF_PIN) ? 1 : 2;
@@ -1030,8 +1134,17 @@ static bool initialize()
   #if defined(PLATFORM_ESP8266)
   WiFi.forceSleepBegin();
   #endif
+  #if defined(TARGET_RX) && defined(PLATFORM_ESP32) && defined(USE_BLE_MSP)
+  // a station associating with our AP is the WiFi ownership trigger; the
+  // handler claims and nothing more, teardown of the loser runs on its own
+  // device's task. Registered once here: Arduino stacks a handler per call.
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+    claimUpdateTransport(TRANSPORT_WIFI);
+  }, ARDUINO_EVENT_WIFI_AP_STACONNECTED);
+  #endif
   registerButtonFunction(ACTION_START_WIFI, [](){
-    setWifiUpdateMode();
+    // a deliberate button hold exposes BLE alongside WiFi on supported RX
+    setWifiUpdateMode(EXPOSURE_WIFI_AND_BLE);
   });
   return true;
 }
@@ -1051,7 +1164,9 @@ static void startWiFi(unsigned long now)
     // Set transmit power to minimum
     POWERMGNT::setPower(MinPower);
 
-    setWifiUpdateMode();
+    // connectionState is already wifiUpdate: every path here has been through
+    // setWifiUpdateMode(), which is also where the transport exposure was
+    // chosen, and re-entering the mode would discard that choice
 
     DBGLN("Stopping Radio");
     Radio.End();
@@ -1194,41 +1309,45 @@ static void startServices()
     return;
   }
 
+  // claimingHandler: any of these arriving over a home-network STA connection
+  // claims the update session for WiFi (captive-portal probes and the
+  // root redirect stay unwrapped, and AP-mode requests claim nothing; there,
+  // association itself already claimed)
   for (auto asset : WEB_ASSETS)
   {
-      server.on(asset.path, WebUpdateSendContent);
+      server.on(asset.path, claimingHandler(WebUpdateSendContent));
   }
-  server.on("/networks.json", WebUpdateSendNetworks);
-  server.on("/sethome", WebUpdateSetHome);
-  server.on("/forget", WebUpdateForget);
-  server.on("/connect", WebUpdateConnect);
-  server.on("/config", HTTP_GET, GetConfiguration);
-  server.on("/access", WebUpdateAccessPoint);
-  server.on("/firmware.bin", WebUpdateGetFirmware);
+  server.on("/networks.json", claimingHandler(WebUpdateSendNetworks));
+  server.on("/sethome", claimingHandler(WebUpdateSetHome));
+  server.on("/forget", claimingHandler(WebUpdateForget));
+  server.on("/connect", claimingHandler(WebUpdateConnect));
+  server.on("/config", HTTP_GET, claimingHandler(GetConfiguration));
+  server.on("/access", claimingHandler(WebUpdateAccessPoint));
+  server.on("/firmware.bin", claimingHandler(WebUpdateGetFirmware));
 
-  server.on("/update", HTTP_POST, WebUploadResponseHandler, WebUploadDataHandler);
+  server.on("/update", HTTP_POST, claimingHandler(WebUploadResponseHandler), WebUploadDataHandler);
   server.on("/update", HTTP_OPTIONS, corsPreflightResponse);
-  server.on("/forceupdate", WebUploadForceUpdateHandler);
+  server.on("/forceupdate", claimingHandler(WebUploadForceUpdateHandler));
   server.on("/forceupdate", HTTP_OPTIONS, corsPreflightResponse);
-  server.on("/cw", HandleContinuousWave);
+  server.on("/cw", claimingHandler(HandleContinuousWave));
 
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
   DefaultHeaders::Instance().addHeader("Access-Control-Max-Age", "600");
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "POST,GET,OPTIONS");
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "*");
 
-  server.on("/hardware.json", HTTP_GET | HTTP_POST, getFile, nullptr, putFile);
-  server.on("/options.json", HTTP_GET, getFile);
-  server.on("/reboot", HandleReboot);
-  server.on("/reset", HandleReset);
+  server.on("/hardware.json", HTTP_GET | HTTP_POST, claimingHandler(getFile), nullptr, putFile);
+  server.on("/options.json", HTTP_GET, claimingHandler(getFile));
+  server.on("/reboot", claimingHandler(HandleReboot));
+  server.on("/reset", claimingHandler(HandleReset));
   #if defined(TARGET_TX) && defined(PLATFORM_ESP32)
     server.on("/udpcontrol", HTTP_POST, WebUdpControl);
   #endif
 
-  server.addHandler(new AsyncCallbackJsonWebHandler("/config", UpdateConfiguration));
-  server.addHandler(new AsyncCallbackJsonWebHandler("/options.json", UpdateSettings));
+  server.addHandler(new AsyncCallbackJsonWebHandler("/config", claimingJsonHandler(UpdateConfiguration)));
+  server.addHandler(new AsyncCallbackJsonWebHandler("/options.json", claimingJsonHandler(UpdateSettings)));
   #if defined(TARGET_RX)
-    server.addHandler(new AsyncCallbackJsonWebHandler("/voltage-sample", SampleVoltageSources));
+    server.addHandler(new AsyncCallbackJsonWebHandler("/voltage-sample", claimingJsonHandler(SampleVoltageSources)));
   #endif
   #if defined(TARGET_TX)
     server.addHandler(new AsyncCallbackJsonWebHandler("/buttons", WebUpdateButtonColors));
@@ -1376,7 +1495,9 @@ static int event()
 {
   if (connectionState == wifiUpdate || connectionState > FAILURE_STATES)
   {
-    if (!wifiStarted) {
+    // connectionState stays wifiUpdate after BLE wins the update
+    // session, so the owner check is what keeps WiFi from restarting
+    if (!wifiStarted && getUpdateTransport() != TRANSPORT_BLE) {
       startWiFi(millis());
       return DURATION_IMMEDIATELY;
     }
@@ -1393,8 +1514,39 @@ static int event()
   return DURATION_IGNORE;
 }
 
+#if defined(TARGET_RX) && defined(PLATFORM_ESP32) && defined(USE_BLE_MSP)
+// BLE won the update session: stop the WiFi services and deinit the
+// stack so its memory goes back to the heap. The CRSF router is deliberately
+// not touched here; wifi2tcp was never attached during dual discovery.
+static void stopWiFiForBleSession()
+{
+  logUpdateHeap("BLE owns, stopping WiFi");
+  server.end();
+  wifi2tcp.stopServer();
+  dnsServer.stop();
+  MDNS.end();
+  WiFi.softAPdisconnect(true);
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+  wifiStarted = false;
+  logUpdateHeap("WiFi stopped");
+}
+#endif
+
 static int timeout()
 {
+#if defined(TARGET_RX) && defined(PLATFORM_ESP32) && defined(USE_BLE_MSP)
+  if (wifiStarted && getUpdateTransport() == TRANSPORT_BLE)
+  {
+    stopWiFiForBleSession();
+    return DURATION_NEVER;
+  }
+  if (cwPending && bleTeardownDone)
+  {
+    cwPending = false;
+    startContinuousWave(cwPendingRadio, cwPendingSubGHz);
+  }
+#endif
   if (wifiStarted)
   {
     HandleWebUpdate();

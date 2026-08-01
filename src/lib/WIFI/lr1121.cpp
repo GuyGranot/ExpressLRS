@@ -9,6 +9,7 @@
 #include <LittleFS.h>
 
 #include "common.h"
+#include "UpdateTransport.h"
 #include "logging.h"
 
 #if defined(TARGET_TX)
@@ -56,6 +57,7 @@ static void WebUploadLR1121DataHandler(const AsyncWebServerRequest *request, con
 {
     if (index == 0)
     {
+        claimUpdateWifiIfSta();
 #if defined(TARGET_TX)
         WifiJoystick::StopJoystickService();
 #endif
@@ -81,6 +83,7 @@ static void ReadStatusForRadio(const JsonObject json, const SX12XX_Radio_Number_
 
 static void GetLR1121Status(AsyncWebServerRequest *request)
 {
+    claimUpdateWifiIfSta();
     const auto response = new AsyncJsonResponse();
     const JsonObject json = response->getRoot();
     hal.end();

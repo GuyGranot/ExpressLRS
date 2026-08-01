@@ -35,6 +35,7 @@
 #include "devRXLUA.h"
 #include "devServoOutput.h"
 #include "devWIFI.h"
+#include "UpdateTransport.h"
 #include "RXEndpoint.h"
 #include "RXOTAConnector.h"
 #include "rx-serial/devSerialIO.h"
@@ -206,7 +207,6 @@ static uint8_t debugRcvrLinkstatsFhssIdx;
 
 bool BindingModeRequest = false;
 
-extern void setWifiUpdateMode();
 void reconfigureSerial();
 
 uint8_t getLq()
@@ -1237,7 +1237,8 @@ void DataUlReceiveComplete()
         // The MSP packet needs to be ACKed so the TX doesn't
         // keep sending it, so defer the switch to wifi
         deferExecutionMillis(500, []() {
-            setWifiUpdateMode();
+            // an explicit request from the handset exposes BLE alongside WiFi
+            setWifiUpdateMode(EXPOSURE_WIFI_AND_BLE);
         });
         break;
     case MSP_ELRS_MAVLINK_TLM: // 0xFD
