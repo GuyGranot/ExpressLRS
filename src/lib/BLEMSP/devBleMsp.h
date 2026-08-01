@@ -40,6 +40,22 @@ const char *BleMspStatus();
  * @brief True when it is safe to put MSP into the uplink: RF link up, disarmed.
  */
 bool BleMspMayForward();
+
+/**
+ * @brief True for the whole bridge session while disarmed: telemetry pins to 1:2
+ * and, if a faster one is reachable, the air rate switches. The definition
+ * carries ICACHE_RAM_ATTR because UpdateTlmRatioEffective calls this from the
+ * packet-timer path, which must not fetch from flash.
+ */
+bool BleMspShouldShapeLink();
+
+/**
+ * @brief Link shaping is opt-in from the Lua "BLE MSP" folder. Not persisted:
+ * storing it would bump the config version, and a session does not survive a
+ * reboot anyway.
+ */
+void BleMspSetLinkShaping(bool enabled);
+bool BleMspGetLinkShaping();
 #endif
 
 #endif

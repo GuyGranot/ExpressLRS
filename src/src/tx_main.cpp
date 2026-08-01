@@ -398,6 +398,16 @@ expresslrs_tlm_ratio_e ICACHE_RAM_ATTR UpdateTlmRatioEffective()
     syncTelemBoostState = stbBoosting;
     retVal = TLM_RATIO_1_2;
   }
+#if defined(USE_BLE_MSP) && defined(PLATFORM_ESP32)
+  // A config session over the BLE bridge is bounded by the downlink, so give
+  // it every telemetry slot while a phone is connected and we are disarmed.
+  // Self-restoring: the flag drops on disconnect or arming and the configured
+  // ratio comes back through the branches below, no reboot needed.
+  else if (BleMspShouldShapeLink())
+  {
+    retVal = TLM_RATIO_1_2;
+  }
+#endif
   // If Armed, telemetry is disabled, otherwise use STD
   else if (ratioConfigured == TLM_RATIO_DISARMED)
   {

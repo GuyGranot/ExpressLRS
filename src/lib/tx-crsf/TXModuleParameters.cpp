@@ -227,6 +227,13 @@ static commandParameter luaBLEMsp = {
     lcsIdle, // step
     STR_EMPTYSPACE
 };
+
+static selectionParameter luaBleMspShaping = {
+    {"Link Shaping", CRSF_TEXT_SELECTION},
+    0, // resynced from BleMspGetLinkShaping() in updateParameters()
+    luastrOffOn,
+    STR_EMPTYSPACE
+};
 #endif
 #endif
 
@@ -1036,6 +1043,16 @@ void TXModuleEndpoint::registerParameters()
   #if defined(USE_BLE_MSP)
   registerParameter(&luaBleMspFolder);
   registerParameter(&luaBLEMsp, wifiBleCallback, luaBleMspFolder.common.id);
+  registerParameter(
+      &luaBleMspShaping, [this](propertiesCommon *item, uint8_t arg) {
+          BleMspSetLinkShaping(arg != 0);
+          // Echo the value back immediately. Every other selection here writes
+          // config, which raises a device event, and updateParameters() then
+          // republishes all the values. Shaping is deliberately not persisted
+          // so it raises no event, leaving the handset's read-after-write to
+          // return a stale value.
+          setTextSelectionValue(&luaBleMspShaping, arg != 0);
+      }, luaBleMspFolder.common.id);
   #endif
   #endif
 
@@ -1059,6 +1076,9 @@ void TXModuleEndpoint::updateParameters()
   setTextSelectionValue(&luaAirRate, RATE_MAX - 1 - currentRate);
 
   setTextSelectionValue(&luaTlmRate, config.GetTlm());
+#if defined(USE_BLE_MSP) && defined(PLATFORM_ESP32)
+  setTextSelectionValue(&luaBleMspShaping, BleMspGetLinkShaping() ? 1 : 0);
+#endif
   luaTlmRate.options = isMavlinkMode ? tlmRatiosMav : tlmRatios;
 
   luaAntenna.options = RadioBandMod::isBDUAL(get_elrs_airRateConfig(config.GetRate())->radio_type) ? antennamodeOptsDualBand : antennamodeOpts;
