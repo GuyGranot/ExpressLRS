@@ -386,3 +386,147 @@ device_t BleMsp_device = {
 };
 
 #endif
+
+#if defined(USE_BLE_MSP) && defined(PLATFORM_ESP32) && defined(TARGET_RX)
+
+#include <Arduino.h>
+
+#include "BleMspConnector.h"
+#include "SpeedyBeeGatt.h"
+#include "TcpMspConnector.h"
+#include "common.h"
+#include "logging.h"
+#include "helpers.h"
+#include "options.h"
+
+extern TcpMspConnector wifi2tcp;
+
+// Identity comes from the image's own baked options; product_name/device_name
+// are arrays filled by options_init() at boot, so a static initializer holds
+static const SpeedyBeeDeviceInfo BLE_DEVICE_INFO = {
+    "ELRSRXMOD",  // productCode
+    nullptr,      // mac, SpeedyBeeGatt fills this from NimBLE
+    product_name, // the name the app displays
+    "ELRSRX",     // wifiName
+    "ELRSRX0001", // serial
+};
+
+// A connected client that never sends a valid MSP frame (a scanner app, a
+// crashed phone) occupies the only BLE slot; drop it so SpeedyBee can get in
+static constexpr uint32_t UNCLAIMED_EVICT_MS = 30000;
+
+// MSP responsiveness only matters once a phone is actually talking to us
+static constexpr int TICK_CONNECTED_MS = 5;
+static constexpr int TICK_ADVERTISING_MS = 100;
+
+static bool finished = false; // this device is done until reboot
+static bool wasConnected = false;
+static uint32_t connectedAtMs = 0;
+static bool evictRequested = false;
+
+// Serial bytes arriving from the app on ABF1. Runs on the NimBLE host task:
+// enqueue only, never touch the router or NimBLE-unsafe state here.
+static void onAppSerialBytes(const uint8_t *data, size_t len)
+{
+    bleMspConnector.pushFromBle(data, (uint16_t)len);
+}
+
+// WiFi owns the session: attach its MSP connector here on the loop core, the
+// one place the router is ever mutated, then take the BLE stack down
+static int concedeToWifi()
+{
+    wifi2tcp.attachRouter();
+    SpeedyBeeGatt::end();
+    bleMspConnector.reset();
+    updateBleTeardownComplete();
+    finished = true;
+    DBGLN("BLEMSP WiFi owns the session, BLE stopped, heap %u min %u largest %u",
+          ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
+    return DURATION_NEVER;
+}
+
+static int event()
+{
+    if (connectionState == wifiUpdate && updateDualDiscovery() && !finished)
+    {
+        // Defer NimBLE init to timeout(): it allocates tens of KB and takes
+        // tens of ms, which we would rather not do inside the event callback
+        return 200;
+    }
+    return DURATION_NEVER;
+}
+
+static int timeout()
+{
+    if (finished)
+    {
+        return DURATION_NEVER;
+    }
+
+    if (getUpdateTransport() == TRANSPORT_WIFI)
+    {
+        return concedeToWifi();
+    }
+
+    if (!SpeedyBeeGatt::isRunning())
+    {
+        // Only read by DBGLN, which compiles away without DEBUG_LOG
+        const uint32_t heapBefore = ESP.getFreeHeap();
+        UNUSED(heapBefore);
+        if (!SpeedyBeeGatt::begin(BLE_DEVICE_INFO, device_name, onAppSerialBytes))
+        {
+            // No BLE this session; the WiFi half must still work in full
+            claimUpdateTransport(TRANSPORT_WIFI);
+            return concedeToWifi();
+        }
+        DBGLN("BLEMSP started, heap %u -> %u (%d used), min %u largest %u",
+              heapBefore, ESP.getFreeHeap(), (int)heapBefore - (int)ESP.getFreeHeap(),
+              ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
+        return TICK_ADVERTISING_MS;
+    }
+
+    const bool clientConnected = SpeedyBeeGatt::isClientConnected();
+    if (clientConnected && !wasConnected)
+    {
+        // fresh session; also starts the never-spoke-MSP eviction clock
+        bleMspConnector.startSession();
+        connectedAtMs = millis();
+        evictRequested = false;
+    }
+    else if (!clientConnected && wasConnected)
+    {
+        // phone gone: drop partial frames so a reconnect starts clean;
+        // ownership is unchanged and advertising has already resumed
+        bleMspConnector.reset();
+    }
+    wasConnected = clientConnected;
+
+    if (clientConnected && !evictRequested &&
+        getUpdateTransport() == TRANSPORT_UNCLAIMED &&
+        !bleMspConnector.sawValidFrame() &&
+        (millis() - connectedAtMs) >= UNCLAIMED_EVICT_MS)
+    {
+        // one-shot: the disconnect completes asynchronously on the host task
+        evictRequested = true;
+        DBGLN("BLEMSP evicting a client that never sent valid MSP");
+        SpeedyBeeGatt::dropClient();
+        return TICK_ADVERTISING_MS;
+    }
+
+    // the first complete valid frame claims the session and attaches the connector
+    bleMspConnector.pump();
+
+    return clientConnected ? TICK_CONNECTED_MS : TICK_ADVERTISING_MS;
+}
+
+// initialize must stay null-or-true: a false return would unhook event/timeout
+// and with them the coordinator that WiFi-side attachment depends on
+device_t BleMsp_device = {
+    .initialize = nullptr,
+    .start = nullptr,
+    .event = event,
+    .timeout = timeout,
+    .subscribe = EVENT_CONNECTION_CHANGED,
+};
+
+#endif
