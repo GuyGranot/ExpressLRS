@@ -761,12 +761,43 @@ void ResetPower()
   // TLM interval is set on the next SYNC packet
 }
 
+/**
+ * @brief Quiet the radio so a parameter change can be applied safely.
+ *
+ * Caller must clear commitInProgress once the change is done.
+ */
+static void beginRadioTransition()
+{
+  // wait until no longer transmitting
+  while (busyTransmitting);
+  // Set the commitInProgress flag to prevent any other RF SPI traffic during the commit from RX or scheduled TX
+  commitInProgress = true;
+  // If telemetry expected in the next interval, the radio was in RX mode
+  // and will skip sending the next packet when the timer resumes.
+  // Return to normal send mode because if the skipped packet happened
+  // to be on the last slot of the FHSS the skip will prevent FHSS
+  if (TelemetryRcvPhase != ttrpTransmitting)
+  {
+    Radio.SetTxIdleMode();
+    TelemetryRcvPhase = ttrpTransmitting;
+  }
+}
+
+/**
+ * @brief Apply an air rate. The ordering here is load-bearing, which is why
+ * it lives in one place rather than being retyped per caller.
+ */
+static void commitRadioRate(uint8_t rate)
+{
+  ResetPower(); // Call before SetRFLinkRate(). The LR1121 Radio lib can now set the correct output power in Config().
+  SetRFLinkRate(rate);
+  LbtEnableIfRequired();
+}
+
 static void ChangeRadioParams()
 {
   ModelUpdatePending = false;
-  ResetPower(); // Call before SetRFLinkRate(). The LR1121 Radio lib can now set the correct output power in Config().
-  SetRFLinkRate(config.GetRate());
-  LbtEnableIfRequired();
+  commitRadioRate(config.GetRate());
 }
 
 void ModelUpdateReq()
@@ -808,19 +839,7 @@ static void CheckConfigChangePending()
     if (syncSpamCounter > 0)
       return;
 
-    // wait until no longer transmitting
-    while (busyTransmitting);
-    // Set the commitInProgress flag to prevent any other RF SPI traffic during the commit from RX or scheduled TX
-    commitInProgress = true;
-    // If telemetry expected in the next interval, the radio was in RX mode
-    // and will skip sending the next packet when the timer resumes.
-    // Return to normal send mode because if the skipped packet happened
-    // to be on the last slot of the FHSS the skip will prevent FHSS
-    if (TelemetryRcvPhase != ttrpTransmitting)
-    {
-      Radio.SetTxIdleMode();
-      TelemetryRcvPhase = ttrpTransmitting;
-    }
+    beginRadioTransition();
     ConfigChangeCommit();
   }
 }
