@@ -60,6 +60,11 @@
 # hardware only.
 #-DUSE_BLE_MSP
 
+# Also expose the receiver's BLE MSP bridge when WiFi starts automatically
+# after the no-link timeout, not only on an explicit request. Requires
+# USE_BLE_MSP.
+#-DUSE_BLE_MSP_AUTO_WIFI
+
 
 ### Debugging options ###
 

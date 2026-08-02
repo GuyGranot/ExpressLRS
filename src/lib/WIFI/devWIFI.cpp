@@ -1580,7 +1580,12 @@ static int timeout()
     // regardless of if .wifi_auto_on_interval is set to less
     if (!InBindingMode || firmwareOptions.wifi_auto_on_interval >= 60000 || pastAutoInterval)
     {
+#if defined(USE_BLE_MSP_AUTO_WIFI)
+      // opt-in: the unattended auto-on path also becomes BLE-discoverable
+      setWifiUpdateMode(EXPOSURE_WIFI_AND_BLE);
+#else
       setWifiUpdateMode();
+#endif
       return DURATION_IMMEDIATELY;
     }
     pastAutoInterval = true;

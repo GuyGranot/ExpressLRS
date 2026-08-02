@@ -20,6 +20,10 @@
  * everything and the whole mechanism compiles away.
  */
 
+#if defined(USE_BLE_MSP_AUTO_WIFI) && !defined(USE_BLE_MSP)
+#error "USE_BLE_MSP_AUTO_WIFI requires USE_BLE_MSP"
+#endif
+
 typedef enum : uint8_t
 {
     TRANSPORT_UNCLAIMED,
