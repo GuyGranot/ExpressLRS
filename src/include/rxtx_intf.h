@@ -17,6 +17,35 @@ void scheduleRebootTime(unsigned long inMs);
  ***/
 #if defined(TARGET_TX)
 void SetSyncSpam();
+
+#if defined(USE_BLE_MSP) && defined(PLATFORM_ESP32)
+// Sentinel for TxRequestSessionRate: run the rate from config.
+#define TX_SESSION_RATE_NONE 0xFF
+
+/**
+ * @brief Temporarily run a different air rate without touching config.
+ *
+ * Applied asynchronously: the receiver is warned with sync packets on the old
+ * rate before the radio hops, so the change costs a reacquisition rather than
+ * a dropout. Pass TX_SESSION_RATE_NONE to return to the configured rate.
+ */
+void TxRequestSessionRate(uint8_t rateIndex);
+
+/**
+ * @brief True once the radio is back on the configured rate and both sync-spam
+ * counters have drained, i.e. the warning telling the receiver where the TX
+ * went has actually gone out. Rebooting before this strands the receiver on
+ * the rate the TX just left.
+ */
+bool TxSessionRateIsHome();
+
+/**
+ * @brief True while an OTA uplink message is in flight or still queued; feed
+ * one MSP frame at a time and only when this is false (TXOTAConnector has no
+ * NAK, so overrunning its queue is a silent whole-frame loss).
+ */
+bool TxUplinkBusy();
+#endif
 #endif
 
 /***

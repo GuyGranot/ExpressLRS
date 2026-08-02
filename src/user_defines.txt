@@ -53,6 +53,11 @@
 #-DHOME_WIFI_SSID=""
 #-DHOME_WIFI_PASSWORD=""
 
+# Present a SpeedyBee-compatible BLE device so the SpeedyBee phone app can
+# configure the flight controller over the ELRS link. ESP32 TX modules only;
+# started from the ELRS Lua menu next to BLE Joystick.
+#-DUSE_BLE_MSP
+
 
 ### Debugging options ###
 

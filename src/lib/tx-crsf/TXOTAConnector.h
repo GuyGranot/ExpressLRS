@@ -15,6 +15,19 @@ public:
 
     void pumpSender();
 
+    /**
+     * @brief True while an uplink message is in flight or still queued.
+     *
+     * The output queue is 256 bytes, so a caller that pushes MSP faster than
+     * the uplink drains it (5 bytes per OTA packet, ack-gated by telemetry)
+     * can evict the front of a frame it already started sending. That is a
+     * silent whole-frame loss, CROSSFIRE2MSP has no NAK, so feed one frame
+     * at a time and only when this is false.
+     *
+     * Loop-core only: both members are written from the sender pump.
+     */
+    bool uplinkBusy() const { return currentTransmissionLength != 0 || outputQueue.size() != 0; }
+
 private:
     void unlockMessage();
 
