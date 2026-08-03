@@ -172,6 +172,9 @@ static int event()
             return flashLED(GPIO_PIN_LED_GREEN, GPIO_LED_GREEN_INVERTED, LEDSEQ_DISCONNECTED, sizeof(LEDSEQ_DISCONNECTED));
         }
         return DURATION_NEVER;
+    // Shares wifiUpdate's pattern; a simple LED has no distinguishable blink
+    // left to allocate. RGB targets get their own, see devRGB.cpp.
+    case spectrumScan:
     case wifiUpdate:
         if (hasRGBLeds)
         {

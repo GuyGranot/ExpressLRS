@@ -46,6 +46,7 @@ typedef enum
     NO_CONFIG_SAVE_STATES,
     wifiUpdate,
     serialUpdate,
+    spectrumScan,     // receive-only sweep, halts the link, exits by reboot
     // Failure states go below here to display immediately
     FAILURE_STATES,
     radioFailed,

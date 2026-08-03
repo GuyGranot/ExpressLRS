@@ -21,6 +21,7 @@
 #include "devGsensor.h"
 #include "devThermal.h"
 #include "devPDET.h"
+#include "devTxSpectrum.h"
 #include "devBackpack.h"
 #else
 // Fake functions for 8285
@@ -108,6 +109,11 @@ device_affinity_t ui_devices[] = {
 #if defined(PLATFORM_ESP32)
   {&Backpack_device, 0},
   {&BLE_device, 0},
+#if defined(TX_SPECTRUM_SCAN)
+  // Affinity 1 (loop core): this device returns DURATION_IMMEDIATELY while
+  // sweeping, which on core 0 would busy-spin a core whose WDT is disabled.
+  {&TxSpectrum_device, 1},
+#endif
 #if !defined(PLATFORM_ESP32_C3)
   {&Screen_device, 0},
   {&Gsensor_device, 0},
@@ -734,6 +740,9 @@ static void UARTconnected()
     setConnectionState(awaitingModelId);
   }
   // But start the timer to get OpenTX sync going and a ModelID update sent
+  // This resume() sits outside the connectionState test above and runs on every
+  // handset (re)connect, so a sweep needs its own guard here.
+  if (connectionState == spectrumScan) return;
   hwTimer::resume();
 }
 
@@ -982,6 +991,13 @@ void OnPowerSetCalibration(mspPacket_t *packet)
     DBGLN("calibration error index %d out of range", index);
     return;
   }
+  // The delay(20) would stall the sweep and the resume() would transmit into a
+  // retuning radio; the write cannot commit during a scan in any case.
+  if (connectionState == spectrumScan)
+  {
+    DBGLN("power calibration refused: spectrum scan in progress");
+    return;
+  }
   hwTimer::stop();
   delay(20);
 
@@ -1006,6 +1022,16 @@ static void EnterBindingMode()
 {
   if (InBindingMode)
       return;
+
+  // This function ends in hwTimer::resume(), which would transmit into a radio
+  // the sweep is retuning, at pre-scan power. The guard belongs here rather
+  // than in EnterBindingModeSafely() because the bind button is registered
+  // against this function directly and bypasses that wrapper.
+  if (connectionState == spectrumScan)
+  {
+    DBGLN("bind refused: spectrum scan in progress");
+    return;
+  }
 
   // Disable the TX timer and wait for any TX to complete
   hwTimer::stop();
@@ -1050,6 +1076,7 @@ static void ExitBindingMode()
 void EnterBindingModeSafely()
 {
   // TX can always enter binding mode safely as the function handles stopping the transmitter
+  // (and, under TX_SPECTRUM_SCAN, refusing outright during a sweep -- see there).
   EnterBindingMode();
 }
 

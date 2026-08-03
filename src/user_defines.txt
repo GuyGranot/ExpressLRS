@@ -86,6 +86,14 @@
 # This debug option reports dual radio RSSI&SNR, which is useful for validating a TD receiver
 #-DDEBUG_RCVR_SIGNAL_STATS
 
+# Experimental TX spectrum-analyzer mode: adds a "Spectrum" folder to the ELRS Lua script
+# which puts the TX module into a receive-only mode state that halts the RC link and sweeps
+# the FHSS channel grid measuring RSSI, streaming live + max-hold traces to the handset in
+# CRSF frames for a live plot. Never transmits, never runs while armed, stores
+# no config, and exits by rebooting. Levels are uncalibrated -- hardware- and
+# antenna-dependent -- so read the plot as a relative measurement.
+#-DTX_SPECTRUM_SCAN
+
 # Enable reporting of RF FreqCorrection in RX's SNR LinkStatistics, also decreases packet rate
 # on Team2.4 for the additional time needed to include the packet header / enable FreqCorrection
 # Dynamic power must be off, else it will adjust based on the FreqCorrection reported in SNR

@@ -176,6 +176,44 @@ static stringParameter luaELRSversion = {
     commit
 };
 
+#if defined(TX_SPECTRUM_SCAN)
+//-------------------------- Spectrum ---------------------------
+static folderParameter luaSpectrumFolder = {
+    {"Spectrum", CRSF_FOLDER}
+};
+
+// Clicking this again while the scan is running resets max-hold -- see
+// TxSpectrumStart(). There is deliberately no separate Reset command: it would
+// be unreachable while scanning and a no-op otherwise.
+static commandParameter luaSpectrumScan = {
+    {"Start Scan", CRSF_COMMAND},
+    lcsIdle, // step
+    STR_EMPTYSPACE
+};
+
+// Registered directly after Start Scan: the plot page reaches this field as
+// scan id + 1 (elrs.lua runSpectrumPage), so the two must stay adjacent.
+// Hidden: the plot's page button is the only sensible way to invoke it, so it
+// does not earn a menu entry.
+static commandParameter luaSpectrumNextSource = {
+    {"Next Source", (crsf_value_type_e)(CRSF_COMMAND | CRSF_FIELD_HIDDEN)},
+    lcsIdle, // step
+    STR_EMPTYSPACE
+};
+
+// Wide is each band's own air-rate bandwidth, so it senses through the filter
+// the link uses; each step down halves it, for a lower floor at the cost of
+// gaps between bins and a slower sweep.
+static constexpr char spectrumRbwOpts[] = "Wide;Medium;Narrow";
+
+static selectionParameter luaSpectrumRbw = {
+    {"Resolution", CRSF_TEXT_SELECTION},
+    0, // value
+    spectrumRbwOpts,
+    STR_EMPTYSPACE
+};
+#endif
+
 //---------------------------- WiFi -----------------------------
 static folderParameter luaWiFiFolder = {
     {"WiFi Connectivity", CRSF_FOLDER}
@@ -318,6 +356,11 @@ extern bool BackpackTelemReadyToSend;
 extern bool TxBackpackWiFiReadyToSend;
 extern bool VRxBackpackWiFiReadyToSend;
 extern void setWifiUpdateMode();
+#if defined(TX_SPECTRUM_SCAN)
+extern void TxSpectrumStart();
+extern void TxSpectrumSetRbw(uint8_t rbw);
+extern void TxSpectrumNextSource();
+#endif
 
 void TXModuleEndpoint::supressCriticalErrors()
 {
@@ -465,13 +508,14 @@ static void setBleJoystickMode()
   setConnectionState(bleJoystick);
 }
 
-void TXModuleEndpoint::handleWifiBle(propertiesCommon *item, uint8_t arg)
+void TXModuleEndpoint::handleModeEntryCmd(propertiesCommon *item, uint8_t arg)
 {
   commandParameter *cmd = (commandParameter *)item;
   void (*setTargetState)();
   connectionState_e targetState;
   const char *textConfirm;
   const char *textRunning;
+  bool requireDisarmed = false;   // WiFi/BLE have always been enterable armed
   if ((void *)item == (void *)&luaWebUpdate)
   {
     setTargetState = &setWifiUpdateMode;
@@ -479,6 +523,16 @@ void TXModuleEndpoint::handleWifiBle(propertiesCommon *item, uint8_t arg)
     textRunning = "WiFi Running...";
     targetState = wifiUpdate;
   }
+#if defined(TX_SPECTRUM_SCAN)
+  else if ((void *)item == (void *)&luaSpectrumScan)
+  {
+    setTargetState = &TxSpectrumStart;
+    textConfirm = "Scan? Drops link";
+    textRunning = "Scanning...";
+    targetState = spectrumScan;
+    requireDisarmed = true; // the sweep drops the RC link
+  }
+#endif
   else
   {
     setTargetState = &setBleJoystickMode;
@@ -487,7 +541,19 @@ void TXModuleEndpoint::handleWifiBle(propertiesCommon *item, uint8_t arg)
     targetState = bleJoystick;
   }
 
-  switch ((commandStep_e)arg)
+  const commandStep_e step = (commandStep_e)arg;
+
+  // Only click and confirm: refusing lcsCancel or lcsQuery would leave RTN
+  // unable to close the popup. Answer with lcsExecuting rather than lcsCancel,
+  // which the ELRS Lua does not render -- it is the only status that shows a
+  // reason and offers [RTN].
+  if (requireDisarmed && (step == lcsClick || step == lcsConfirmed) && isArmed)
+  {
+    sendCommandResponse(cmd, lcsExecuting, "Disarm first");
+    return;
+  }
+
+  switch (step)
   {
     case lcsClick:
       if (connectionState == connected)
@@ -548,6 +614,12 @@ void TXModuleEndpoint::handleSimpleSendCmd(propertiesCommon *item, uint8_t arg)
     {
       VRxBackpackWiFiReadyToSend = true;
     }
+#if defined(TX_SPECTRUM_SCAN)
+    else if ((void *)item == (void *)&luaSpectrumNextSource)
+    {
+      TxSpectrumNextSource();
+    }
+#endif
     sendCommandResponse((commandParameter *)item, lcsExecuting, msg);
   } /* if doExecute */
   else if(arg == lcsCancel || ((millis() - lastLcsPoll)> 2000))
@@ -776,7 +848,7 @@ static void recalculatePacketRateOptions(int minInterval)
 
 void TXModuleEndpoint::registerParameters()
 {
-  auto wifiBleCallback = [&](propertiesCommon *item, const uint8_t arg) { handleWifiBle(item, arg); };
+  auto modeEntryCallback = [&](propertiesCommon *item, const uint8_t arg) { handleModeEntryCmd(item, arg); };
   auto sendCallback = [&](propertiesCommon *item, const uint8_t arg) { handleSimpleSendCmd(item, arg); };
 
   if (HAS_RADIO) {
@@ -908,9 +980,27 @@ void TXModuleEndpoint::registerParameters()
     registerParameter(&luaVtxSend, sendCallback, luaVtxFolder.common.id);
   }
 
+#if defined(TX_SPECTRUM_SCAN)
+  if (HAS_RADIO) {
+    registerParameter(&luaSpectrumFolder);
+    registerParameter(&luaSpectrumScan, modeEntryCallback, luaSpectrumFolder.common.id);
+    registerParameter(&luaSpectrumNextSource, sendCallback, luaSpectrumFolder.common.id);
+    registerParameter(&luaSpectrumRbw, [this](propertiesCommon *item, uint8_t arg) {
+      // Echo the value back. Every other selection here writes config, which
+      // raises a device event, and updateParameters() then republishes all the
+      // displayed values. This one is deliberately not persisted, so it raises
+      // no event and is never republished, leaving the handset's
+      // read-after-write to return the stale 0 -- the selector snaps back to
+      // Wide while the sweep is in fact set to what was chosen.
+      setTextSelectionValue(&luaSpectrumRbw, arg);
+      TxSpectrumSetRbw(arg);
+    }, luaSpectrumFolder.common.id);
+  }
+#endif
+
   // WIFI folder
   registerParameter(&luaWiFiFolder);
-  registerParameter(&luaWebUpdate, wifiBleCallback, luaWiFiFolder.common.id);
+  registerParameter(&luaWebUpdate, modeEntryCallback, luaWiFiFolder.common.id);
   if (HAS_RADIO) {
     registerParameter(&luaRxWebUpdate, sendCallback, luaWiFiFolder.common.id);
 
@@ -966,7 +1056,7 @@ void TXModuleEndpoint::registerParameters()
   }
 
   #if defined(PLATFORM_ESP32)
-  registerParameter(&luaBLEJoystick, wifiBleCallback);
+  registerParameter(&luaBLEJoystick, modeEntryCallback);
   #endif
 
   if (HAS_RADIO) {
