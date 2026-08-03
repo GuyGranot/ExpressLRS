@@ -82,6 +82,12 @@ jobs:
         platformio pkg update
         PLATFORMIO_BUILD_FLAGS="-DRegulatory_Domain_ISM_2400" pio test -e native
 
+    # checks the Python decoder against frames the firmware encoder produced
+    - name: Run spectrum host decoder selftest
+      run: |
+        cd src/python
+        python rxspectrum.py --selftest
+
   # Compile checks for the optional spectrum analyzers, which no target env
   # enables: one env per radio driver, since the sweep differs between them.
   # Do NOT add -DRegulatory_Domain_ISM_2400 here -- PLATFORMIO_BUILD_FLAGS
@@ -98,6 +104,8 @@ jobs:
             flags: "-DRegulatory_Domain_FCC_915 -DTX_SPECTRUM_SCAN"
           - target: Unified_ESP32_2400_TX_via_UART
             flags: "-DTX_SPECTRUM_SCAN"
+          - target: Unified_ESP32C3_LR1121_RX_via_UART
+            flags: "-DRegulatory_Domain_FCC_915 -DRX_SPECTRUM_SCAN"
     steps:
     - name: Checkout
       uses: actions/checkout@v6
