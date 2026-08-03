@@ -87,6 +87,10 @@ typedef enum : uint8_t
     CRSF_FRAMETYPE_MSP_WRITE = 0x7C, // write with 8 byte chunked binary (OpenTX outbound telemetry buffer limit)
     // Ardupilot frames
     CRSF_FRAMETYPE_ARDUPILOT_RESP = 0x80,
+    // PROVISIONAL, unregistered vendor type beside mLRS 0x81/0x82 and sharing their
+    // shape: one type, sub-type in payload[0]. Sub-types: 0x01 spectrum sweep
+    // (lib/SpectrumSweep/SpectrumProtocol.h).
+    CRSF_FRAMETYPE_ELRS_VENDOR = 0x83,
 } crsf_frame_type_e;
 
 typedef enum : uint8_t {
