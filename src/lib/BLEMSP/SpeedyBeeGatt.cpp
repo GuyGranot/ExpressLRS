@@ -4,6 +4,7 @@
 
 #include <Arduino.h>
 
+#include "UpdateTransport.h"
 #include "logging.h"
 
 #include <NimBLEDevice.h>
@@ -14,6 +15,9 @@
 // undefined macro reads as 0, so this holds across both generations
 #if !SOC_BLE_SUPPORTED && !SOC_BT_SUPPORTED
 #error "USE_BLE_MSP requires a SoC with a BLE controller"
+#endif
+#if defined(TARGET_RX) && (!defined(CONFIG_SW_COEXIST_ENABLE) || !CONFIG_SW_COEXIST_ENABLE)
+#error "USE_BLE_MSP on a receiver requires WiFi/Bluetooth software coexistence in the SDK"
 #endif
 
 // The advertised UUID is what the app filters on; ABF0 is found after connecting
@@ -46,6 +50,17 @@ static volatile uint16_t currentMtu = 23;
 // Written on the NimBLE task; loop-core reads are advisory display data
 static SpeedyBeeGatt::HandshakeTrace traceState;
 #endif
+
+// On the receiver, input permission is revoked when WiFi wins the update
+// session; the TX has no competing transport
+static bool acceptsBleInput()
+{
+#if defined(TARGET_RX)
+    return updateTransportAcceptsBleInput();
+#else
+    return true;
+#endif
+}
 
 static void notifyCmd(void *, const uint8_t *data, size_t len)
 {
@@ -105,7 +120,7 @@ class DataRecvCallbacks : public NimBLECharacteristicCallbacks
     {
         const NimBLEAttValue value = pCharacteristic->getValue();
         const SpeedyBeeGatt::serialSink_t sink = serialSink;
-        if (value.size() != 0 && sink != nullptr)
+        if (value.size() != 0 && sink != nullptr && acceptsBleInput())
         {
             sink(value.data(), value.size());
         }
@@ -118,7 +133,7 @@ class CmdRecvCallbacks : public NimBLECharacteristicCallbacks
     void onWrite(NimBLECharacteristic *pCharacteristic, NimBLEConnInfo &connInfo) override
     {
         const NimBLEAttValue value = pCharacteristic->getValue();
-        if (value.size() == 0 || handshake == nullptr)
+        if (value.size() == 0 || handshake == nullptr || !acceptsBleInput())
         {
             return;
         }

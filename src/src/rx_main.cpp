@@ -35,6 +35,10 @@
 #include "devRXLUA.h"
 #include "devServoOutput.h"
 #include "devWIFI.h"
+#include "UpdateTransport.h"
+#if defined(USE_BLE_MSP) && defined(PLATFORM_ESP32)
+#include "devBleMsp.h"
+#endif
 #include "RXEndpoint.h"
 #include "RXOTAConnector.h"
 #include "rx-serial/devSerialIO.h"
@@ -83,6 +87,9 @@ device_affinity_t ui_devices[] = {
   {&RXLUA_device, 0},
   {&RGB_device, 0},
   {&WIFI_device, 0},
+#if defined(USE_BLE_MSP) && defined(PLATFORM_ESP32)
+  {&BleMsp_device, 1}, // loop core: its pump re-enters crsfRouter.processMessage
+#endif
   {&Button_device, 0},
   {&AnalogVbat_device, 0},
   {&ServoOut_device, 1},
@@ -206,7 +213,6 @@ static uint8_t debugRcvrLinkstatsFhssIdx;
 
 bool BindingModeRequest = false;
 
-extern void setWifiUpdateMode();
 void reconfigureSerial();
 
 uint8_t getLq()
@@ -1237,7 +1243,8 @@ void DataUlReceiveComplete()
         // The MSP packet needs to be ACKed so the TX doesn't
         // keep sending it, so defer the switch to wifi
         deferExecutionMillis(500, []() {
-            setWifiUpdateMode();
+            // an explicit request from the handset exposes BLE alongside WiFi
+            setWifiUpdateMode(EXPOSURE_WIFI_AND_BLE);
         });
         break;
     case MSP_ELRS_MAVLINK_TLM: // 0xFD
