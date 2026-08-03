@@ -57,6 +57,10 @@
 # halts the RC link, sweeps the FHSS grid receive-only and plots RSSI on the handset
 #-DTX_SPECTRUM_SCAN
 
+# The same receive-only sweep on a RECEIVER, triggered and streamed over the
+# flight-controller / host UART; for bench use over Betaflight passthrough
+#-DRX_SPECTRUM_SCAN
+
 
 ### Debugging options ###
 

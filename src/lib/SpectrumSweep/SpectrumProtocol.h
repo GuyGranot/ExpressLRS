@@ -1,9 +1,10 @@
 #pragma once
 
 /*
- * Spectrum analyzer wire format, TX module -> handset, carried in a
- * CRSF_FRAMETYPE_ELRS_VENDOR frame; multi-byte fields big endian. No Arduino,
- * driver or CRSF dependencies, so the codec runs in native tests and tooling.
+ * Spectrum analyzer wire format, TX module -> handset or receiver -> host,
+ * carried in a CRSF_FRAMETYPE_ELRS_VENDOR frame; multi-byte fields big endian.
+ * No Arduino, driver or CRSF dependencies, so the codec runs in native tests
+ * and tooling.
  */
 
 #include <stdint.h>
@@ -11,6 +12,15 @@
 #define SPECTRUM_SUBTYPE 0x01
 
 #define SPECTRUM_PROTO_VERSION 1
+
+// Sub-type 0x02: the receiver's answer to a scan trigger, sent on every
+// trigger whether accepted or not, so a refusal is never silent
+#define SPECTRUM_SUBTYPE_STATUS 0x02
+#define SPECTRUM_STATUS_PAYLOAD_BYTES 3
+
+#define SPECTRUM_STATUS_ACCEPTED 0       // sweeping, or restarted if already sweeping
+#define SPECTRUM_STATUS_REFUSED_LINKED 1 // RC link is up; this is a bench diagnostic
+#define SPECTRUM_STATUS_RADIO_FAILED 2   // radio init failed; nothing was measured
 
 // 40 bins/frame: an 80 bin 2.4GHz sweep is exactly two frames, a 40 channel FCC915 sweep one
 #define SPECTRUM_MAX_BINS_PER_FRAME 40
