@@ -53,6 +53,10 @@
 #-DHOME_WIFI_SSID=""
 #-DHOME_WIFI_PASSWORD=""
 
+# Experimental TX spectrum analyzer: adds a Spectrum folder to the ELRS Lua that
+# halts the RC link, sweeps the FHSS grid receive-only and plots RSSI on the handset
+#-DTX_SPECTRUM_SCAN
+
 
 ### Debugging options ###
 

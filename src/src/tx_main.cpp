@@ -21,6 +21,7 @@
 #include "devGsensor.h"
 #include "devThermal.h"
 #include "devPDET.h"
+#include "devTxSpectrum.h"
 #include "devBackpack.h"
 #else
 // Fake functions for 8285
@@ -108,6 +109,11 @@ device_affinity_t ui_devices[] = {
 #if defined(PLATFORM_ESP32)
   {&Backpack_device, 0},
   {&BLE_device, 0},
+#if defined(TX_SPECTRUM_SCAN)
+  // Loop core: this device returns DURATION_IMMEDIATELY while sweeping, which
+  // on core 0 would busy-spin a core whose WDT is disabled
+  {&TxSpectrum_device, 1},
+#endif
 #if !defined(PLATFORM_ESP32_C3)
   {&Screen_device, 0},
   {&Gsensor_device, 0},
@@ -734,6 +740,9 @@ static void UARTconnected()
     setConnectionState(awaitingModelId);
   }
   // But start the timer to get OpenTX sync going and a ModelID update sent
+  // Runs on every handset (re)connect, outside the state test above, so a
+  // sweep needs its own guard
+  if (connectionState == spectrumScan) return;
   hwTimer::resume();
 }
 
@@ -982,6 +991,13 @@ void OnPowerSetCalibration(mspPacket_t *packet)
     DBGLN("calibration error index %d out of range", index);
     return;
   }
+  // The resume() would transmit into a retuning radio; the write cannot commit
+  // during a scan in any case
+  if (connectionState == spectrumScan)
+  {
+    DBGLN("power calibration refused: spectrum scan in progress");
+    return;
+  }
   hwTimer::stop();
   delay(20);
 
@@ -1006,6 +1022,15 @@ static void EnterBindingMode()
 {
   if (InBindingMode)
       return;
+
+  // Ends in hwTimer::resume(), which would transmit into a radio the sweep is
+  // retuning. Guarded here, not in EnterBindingModeSafely(): the bind button
+  // registers this function directly and bypasses that wrapper
+  if (connectionState == spectrumScan)
+  {
+    DBGLN("bind refused: spectrum scan in progress");
+    return;
+  }
 
   // Disable the TX timer and wait for any TX to complete
   hwTimer::stop();
