@@ -38,6 +38,7 @@
 #include "RXEndpoint.h"
 #include "RXOTAConnector.h"
 #include "rx-serial/devSerialIO.h"
+#include "devRxSpectrum.h"
 
 #include <LittleFS.h>
 #if defined(PLATFORM_ESP8266)
@@ -91,6 +92,11 @@ device_affinity_t ui_devices[] = {
   {&VTxSPI_device, 0},
   {&MSPVTx_device, 0}, // dependency on VTxSPI_device
   {&Thermal_device, 0},
+#endif
+#if defined(RX_SPECTRUM_SCAN)
+  // Core 1 (loop core), as TxSpectrum: the sweep returns DURATION_IMMEDIATELY
+  // and blocks ~1.3ms per call, which keeps the watchdog fed in loop context.
+  {&RxSpectrum_device, 1},
 #endif
 };
 

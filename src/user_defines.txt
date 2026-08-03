@@ -94,6 +94,13 @@
 # antenna-dependent -- so read the plot as a relative measurement.
 #-DTX_SPECTRUM_SCAN
 
+# The same receive-only sweep on a RECEIVER, triggered by a CRSF command over the
+# flight-controller / host UART instead of the handset, and streaming its frames back
+# out the same port. Intended for bench use over Betaflight passthrough, where the FC
+# is already a transparent serial bridge. Halts the RC link and exits by resetting the
+# receiver. Levels are uncalibrated, as above.
+#-DRX_SPECTRUM_SCAN
+
 # Enable reporting of RF FreqCorrection in RX's SNR LinkStatistics, also decreases packet rate
 # on Team2.4 for the additional time needed to include the packet header / enable FreqCorrection
 # Dynamic power must be off, else it will adjust based on the FreqCorrection reported in SNR

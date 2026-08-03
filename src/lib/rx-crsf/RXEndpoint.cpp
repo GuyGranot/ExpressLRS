@@ -8,6 +8,10 @@
 #include "rxtx_intf.h"
 #include "logging.h"
 
+#if defined(RX_SPECTRUM_SCAN)
+#include "devRxSpectrum.h"
+#endif
+
 extern void reset_into_bootloader();
 
 RXEndpoint::RXEndpoint()
@@ -41,6 +45,22 @@ bool RXEndpoint::handleRaw(const crsf_header_t *message)
             config.SetModelId(payload[2]);
             return true;
         }
+#if defined(RX_SPECTRUM_SCAN)
+        // Non CRSF, dest=s src=p -> enter receive-only spectrum scan.
+        // payload[2] selects the antenna port/band (0=900, 1=2.4, 2=both),
+        // payload[3] the sensing bandwidth (spectrumRbw_e) and payload[4] a
+        // non-zero value to sweep both radios and compare their antennas. Both
+        // trailing bytes are optional, so a shorter trigger keeps its old
+        // meaning and older senders still work.
+        // Drops the RC link; exits by resetting the receiver.
+        if (payload[0] == 's' && payload[1] == 'p')
+        {
+            RxSpectrumStart(payload[2],
+                            (message->frame_size >= 6) ? payload[3] : rbwWide,
+                            (message->frame_size >= 7) && payload[4] != 0);
+            return true;
+        }
+#endif
     }
     return false;
 }

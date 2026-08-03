@@ -1,9 +1,10 @@
 #pragma once
 
 /*
- * Wire format for the spectrum analyzer, TX module -> handset. Pure layout
- * and codec with no Arduino, driver or CRSF dependencies, so it can be tested
- * natively and reused by the handset decoder and by offline tooling.
+ * Wire format for the spectrum analyzer: TX module -> handset, or receiver ->
+ * flight controller / host. Pure layout and codec with no Arduino, driver or
+ * CRSF dependencies, so it can be tested natively and reused by the handset
+ * decoder and by offline tooling.
  *
  * Carried in a CRSF_FRAMETYPE_ELRS_VENDOR extended frame (that type is shared
  * and provisional, hence the sub-type byte -- see include/crsf_protocol.h).
@@ -45,6 +46,16 @@
 #define SPECTRUM_SUBTYPE 0x01
 
 #define SPECTRUM_PROTO_VERSION 1
+
+// Sub-type 0x02: the receiver's answer to a scan trigger, sent on every
+// trigger whether accepted or not, so a refusal is never silent.
+//   [0] sub-type   [1] version   [2] one of SPECTRUM_STATUS_*
+#define SPECTRUM_SUBTYPE_STATUS 0x02
+#define SPECTRUM_STATUS_PAYLOAD_BYTES 3
+
+#define SPECTRUM_STATUS_ACCEPTED 0       // sweeping, or restarted if already sweeping
+#define SPECTRUM_STATUS_REFUSED_LINKED 1 // RC link is up; this is a bench diagnostic
+#define SPECTRUM_STATUS_RADIO_FAILED 2   // radio init failed; nothing was measured
 
 // 40 bins/frame makes an 80 bin 2.4GHz sweep exactly two frames, and a 40
 // channel FCC915 sweep exactly one.
