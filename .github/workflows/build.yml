@@ -82,6 +82,55 @@ jobs:
         platformio pkg update
         PLATFORMIO_BUILD_FLAGS="-DRegulatory_Domain_ISM_2400" pio test -e native
 
+  # Compile checks for the optional spectrum analyzers, which no target env
+  # enables: one env per radio driver, since the sweep differs between them.
+  # Do NOT add -DRegulatory_Domain_ISM_2400 here -- PLATFORMIO_BUILD_FLAGS
+  # reaches build_flags.py as one string, and the line stripping ISM_2400 drops
+  # every flag with it, leaving a green build with the feature compiled out.
+  spectrum-feature-build:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: Unified_ESP32_LR1121_TX_via_UART
+            flags: "-DRegulatory_Domain_FCC_915 -DTX_SPECTRUM_SCAN"
+          - target: Unified_ESP32_2400_TX_via_UART
+            flags: "-DTX_SPECTRUM_SCAN"
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v6
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.10'
+
+    - name: Cache pip
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ matrix.target }}
+
+    - name: Install PlatformIO
+      run: |
+        python -m pip install --upgrade pip
+        pip install platformio
+        pip install wheel
+
+    - name: Cache PlatformIO
+      uses: actions/cache@v5
+      with:
+        path: ~/.platformio
+        key: ${{ runner.os }}-platformio
+
+    - name: Run PlatformIO
+      run: |
+        cd src
+        platformio pkg update
+        PLATFORMIO_BUILD_FLAGS="${{ matrix.flags }}" pio run -e ${{ matrix.target }}
+
   targets:
     needs:
       - build-and-validate-artifacts
