@@ -27,6 +27,12 @@ return {
     {name='F3', id=25, type=0, parent=24, value=1, step=1, min=1, max=8, unit=''},
     {name='F4', id=26, type=0, parent=24, value=1, step=1, min=1, max=8, unit=''},
 
+  -- Spectrum analyzer; id=28 must match SCAN_FIELD_ID in spectrummock.lua.
+  -- 'status' is what opens the running popup that lets the plot take the screen.
+  {name='Spectrum', id=27, type=11},
+    {name='Start Scan', id=28, type=13, parent=27, status=2, timeout=200, info='Scanning...'},
+    {name='Next Source', id=29, type=13, parent=27, hidden=true},
+
   {name="----BACK----", type=14, parent=255},
   {name="----EXIT----", type=14, exit = true}
 }, "0/500   C", "ExpressLRS TX"
