@@ -4,6 +4,7 @@
 #include "elrs_eeprom.h"
 #include "options.h"
 #include "common.h"
+#include "config_modelext.h"
 #include "OTA.h"
 
 #if defined(PLATFORM_ESP32)
@@ -142,6 +143,11 @@ public:
     uint8_t GetAntennaMode() const { return m_model->txAntenna; }
     uint8_t GetLinkMode() const { return m_model->linkMode; }
     bool GetModelMatch() const { return m_model->modelMatch; }
+#if defined(HAS_MODEL_EXTRAS)
+    bool GetBandSubset() const { return m_modelExtras[m_modelId].val.bandSubset; }
+#else
+    bool GetBandSubset() const { return false; }
+#endif
     bool     IsModified() const { return m_modified != 0; }
     uint8_t  GetVtxBand() const { return m_config.vtxBand; }
     uint8_t  GetVtxChannel() const { return m_config.vtxChannel; }
@@ -170,6 +176,11 @@ public:
     void SetAntennaMode(uint8_t txAntenna);
     void SetLinkMode(uint8_t linkMode);
     void SetModelMatch(bool modelMatch);
+#if defined(HAS_MODEL_EXTRAS)
+    void SetBandSubset(bool bandSubset);
+#else
+    void SetBandSubset(bool) {}
+#endif
     void SetDefaults(bool commit);
     void SetStorageProvider(ELRS_EEPROM *eeprom);
     void SetVtxBand(uint8_t vtxBand);
@@ -204,6 +215,10 @@ private:
     uint32_t     m_modified;
     model_config_t *m_model;
     uint8_t     m_modelId;
+#if defined(HAS_MODEL_EXTRAS)
+    // see config_modelext.h
+    model_extra_config_t m_modelExtras[CONFIG_TX_MODEL_CNT];
+#endif
 #if defined(PLATFORM_ESP32)
     nvs_handle  handle;
 #endif
