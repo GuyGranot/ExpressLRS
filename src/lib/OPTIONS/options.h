@@ -22,6 +22,14 @@ typedef struct _options {
     uint8_t     _magic_[8];     // this is the magic constant so the configurator can find this options block
     uint16_t    _version_;      // the version of this structure
     uint8_t     domain;         // depends on radio chip
+#if defined(USE_FHSS_SUBSET)
+    // FHSS channel subset per physical band: first channel index on that band's
+    // full-band grid, and how many channels, 0 = full band
+    uint8_t     fhss_subset_subghz_start;
+    uint8_t     fhss_subset_subghz_count;
+    uint8_t     fhss_subset_2g4_start;
+    uint8_t     fhss_subset_2g4_count;
+#endif
     uint8_t     hasUID;
     uint8_t     uid[6];         // MY_UID derived from MY_BINDING_PHRASE
     uint32_t    flash_discriminator;    // Discriminator value used to determine if the device has been reflashed and therefore
