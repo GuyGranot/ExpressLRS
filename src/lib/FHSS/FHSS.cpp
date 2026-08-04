@@ -180,6 +180,35 @@ bool FHSSsubsetConfigured(void)
 #endif
 }
 
+// The configured subsets as the display layer wants them: sub-GHz start and
+// count, then 2.4GHz start and count
+void FHSSgetOptionSubsets(uint8_t out[4])
+{
+    out[0] = firmwareOptions.fhss_subset_subghz_start;
+    out[1] = firmwareOptions.fhss_subset_subghz_count;
+    out[2] = firmwareOptions.fhss_subset_2g4_start;
+    out[3] = firmwareOptions.fhss_subset_2g4_count;
+}
+
+bool FHSSformatSubsets(char *dst, uint8_t maxlen, const uint8_t subsets[4])
+{
+    dst[0] = '\0';
+    for (unsigned band = 0; band < 2; band++)
+    {
+        if (subsets[band * 2 + 1] == 0)
+            continue;
+        char num[4];
+        if (dst[0])
+            strlcat(dst, "/", maxlen);
+        itoa(subsets[band * 2], num, 10);
+        strlcat(dst, num, maxlen);
+        strlcat(dst, "+", maxlen);
+        itoa(subsets[band * 2 + 1], num, 10);
+        strlcat(dst, num, maxlen);
+    }
+    return dst[0] != 0;
+}
+
 // Compute one band's effective geometry: the options-defined subset when it is
 // requested, present, and fits this domain; the full domain otherwise. Each
 // band falls back independently.

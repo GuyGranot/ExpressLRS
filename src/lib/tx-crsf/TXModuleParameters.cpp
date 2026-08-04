@@ -165,6 +165,16 @@ static selectionParameter luaModelMatch = {
     modelMatchUnit
 };
 
+#if defined(HAS_MODEL_EXTRAS)
+static char bandSubsetUnit[sizeof(" (full band)")] = "";
+static selectionParameter luaBandSubset = {
+    {"Band Subset", CRSF_TEXT_SELECTION},
+    0, // value
+    luastrOffOn,
+    bandSubsetUnit
+};
+#endif
+
 static commandParameter luaBind = {
     {"Bind", CRSF_COMMAND},
     lcsIdle, // step
@@ -390,6 +400,20 @@ void TXModuleEndpoint::updateModelID() {
   itoa(modelId, modelMatchUnit+6, 10);
   strcat(modelMatchUnit, ")");
 }
+
+#if defined(HAS_MODEL_EXTRAS)
+/**
+ * The toggle is a request, not a report: the definition it asks for may not fit
+ * this radio's domain, in which case the build falls back to full band. Saying
+ * so keeps "On" honest, and it is a fact about this device alone.
+ */
+void TXModuleEndpoint::updateBandSubsetUnit()
+{
+  strlcpy(bandSubsetUnit,
+          (config.GetBandSubset() && !FHSSanySubsetActive()) ? " (full band)" : "",
+          sizeof(bandSubsetUnit));
+}
+#endif
 
 void TXModuleEndpoint::updateTlmBandwidth()
 {
@@ -870,6 +894,16 @@ void TXModuleEndpoint::registerParameters()
       });
     }
 
+#if defined(HAS_MODEL_EXTRAS)
+    // Per-model band-subset toggle; takes effect through the config-commit ->
+    // ChangeRadioParams path like a rate change (the link drops and
+    // re-establishes in the new geometry)
+    registerParameter(&luaBandSubset, [this](propertiesCommon *item, uint8_t arg) {
+      config.SetBandSubset(arg);
+      updateBandSubsetUnit();
+    });
+#endif
+
     // POWER folder
     registerParameter(&luaPowerFolder);
     filterOptions(&luaPower, POWERMGNT::getMinPower(), POWERMGNT::getMaxPower(), strPowerLevels);
@@ -1010,6 +1044,10 @@ void TXModuleEndpoint::updateParameters()
   setTextSelectionValue(&luaLinkMode, config.GetLinkMode());
   updateModelID();
   setTextSelectionValue(&luaModelMatch, (uint8_t)config.GetModelMatch());
+#if defined(HAS_MODEL_EXTRAS)
+  setTextSelectionValue(&luaBandSubset, (uint8_t)config.GetBandSubset());
+  updateBandSubsetUnit();
+#endif
   setTextSelectionValue(&luaPower, config.GetPower() - MinPower);
   if (GPIO_PIN_FAN_EN != UNDEF_PIN || GPIO_PIN_FAN_PWM != UNDEF_PIN)
   {

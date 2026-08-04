@@ -2,6 +2,7 @@
 
 #include "CRSFEndpoint.h"
 #include "msptypes.h"
+#include "config_modelext.h"
 
 class RxTxEndpoint : public CRSFEndpoint {
 public:

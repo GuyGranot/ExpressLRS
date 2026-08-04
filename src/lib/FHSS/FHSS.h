@@ -120,6 +120,17 @@ bool FHSSsubsetConfigured(void);
 // mode transmits on -- the build-time judgement as a pure query, so the
 // acquisition scan can settle its phase before building
 bool FHSSsubsetWouldApply(void);
+
+// The configured subsets, sub-GHz start/count then 2.4GHz start/count, for the
+// receiver's own read-only readout of what it is holding
+void FHSSgetOptionSubsets(uint8_t out[4]);
+
+// Render those four bytes as "start+count" per band, sub-GHz first, joined with
+// '/' ("5+24/10+17"). Bands with a count of zero are skipped; returns false if
+// that left nothing, so the caller picks its own wording for none.
+#define FHSS_SUBSET_STR_LEN 14      // "241+15/241+15" plus the terminator
+bool FHSSformatSubsets(char *dst, uint8_t maxlen, const uint8_t subsets[4]);
+
 #else
 static inline bool FHSSsubsetConfigured(void) { return false; }
 static inline bool FHSSsubsetWouldApply(void) { return false; }

@@ -5,6 +5,7 @@
 #include "CRSFRouter.h"
 #include "rxtx_intf.h"
 #include "config.h"
+#include "FHSS.h"
 #include "logging.h"
 
 bool RxTxEndpoint::handleRxTxMessage(const crsf_header_t *message)
@@ -21,7 +22,6 @@ bool RxTxEndpoint::handleRxTxMessage(const crsf_header_t *message)
         handleMspSetRxTxConfig(extMessage);
         return true;
     }
-
     return false;
 }
 
