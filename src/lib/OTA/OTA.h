@@ -175,7 +175,10 @@ extern volatile uint8_t OtaNonce;
 extern uint16_t OtaCrcInitializer;
 extern OtaSwitchMode_e OtaSwitchModeCurrent;
 
-void OtaUpdateCrcInitFromUid();
+// Derive the CRC initializer that identifies this link epoch, from the binding
+// ID and the hop geometry about to be transmitted on (0 for full band).
+// Re-derive whenever either moves; on SX128X this is also the hardware sync word.
+void OtaUpdateCrcInit(bool binding, uint16_t geometryHash);
 uint32_t OtaGetUidSeed();
 void OtaUpdateSerializers(OtaSwitchMode_e const mode, uint8_t packetSize);
 bool OtaUidIsBound(const uint8_t uid[UID_LEN]);

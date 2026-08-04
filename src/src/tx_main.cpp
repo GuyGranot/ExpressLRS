@@ -437,6 +437,13 @@ void SetRFLinkRate(uint8_t index) // Set speed of RF link
   bool invertIQ = InBindingMode || (UID[5] & 0x01);
   OtaSwitchMode_e newSwitchMode = (OtaSwitchMode_e)config.GetSwitchMode();
 
+#if defined(RADIO_LR1121)
+  // settled before the epoch below, which is per band mode. Only reached with
+  // the rate unchanged when the guard falls through, and then these do not move.
+  FHSSusePrimaryFreqBand = !RadioBandMod::isB2G4(ModParams->radio_type);
+  FHSSuseDualBand = RadioBandMod::isBDUAL(ModParams->radio_type);
+#endif
+
   bool subGHz = FHSSconfig->freq_center < 1000000000;
 #if defined(RADIO_LR1121)
   if (FHSSuseDualBand && subGHz)
@@ -445,10 +452,18 @@ void SetRFLinkRate(uint8_t index) // Set speed of RF link
   }
 #endif
 
+  // The epoch follows the hop geometry as well as the rate, and on SX128X it is
+  // also the sync word Radio.Config() takes below. Derive it before the guard
+  // and test it there, so a geometry change that moved no rate parameter still
+  // reconfigures the radio and no caller has to announce one.
+  const uint16_t prevCrcInit = OtaCrcInitializer;
+  OtaUpdateCrcInit(InBindingMode, FHSSgetGeometryHash());
+
   if ((ModParams == ExpressLRS_currAirRate_Modparams)
     && (RFperf == ExpressLRS_currAirRate_RFperfParams)
     && (subGHz || invertIQ == Radio.IQinverted)
     && (OtaSwitchModeCurrent == newSwitchMode)
+    && (OtaCrcInitializer == prevCrcInit)
     && (!InBindingMode))  // binding mode must always execute code below to set frequency
     return;
 
@@ -458,11 +473,6 @@ void SetRFLinkRate(uint8_t index) // Set speed of RF link
   interval = interval * 12 / 10; // increase the packet interval by 20% to allow adding packet header
 #endif
   hwTimer::updateInterval(interval);
-
-#if defined(RADIO_LR1121)
-  FHSSusePrimaryFreqBand = !RadioBandMod::isB2G4(ModParams->radio_type);
-  FHSSuseDualBand = RadioBandMod::isBDUAL(ModParams->radio_type);
-#endif
 
   Radio.Config(ModParams->bw, ModParams->sf, ModParams->cr, FHSSgetInitialFreq(),
                ModParams->PreambleLen, invertIQ, ModParams->PayloadLength
@@ -764,6 +774,13 @@ void ResetPower()
 static void ChangeRadioParams()
 {
   ModelUpdatePending = false;
+
+  // With nothing configured the boot sequence already stands and a rebuild
+  // cannot come out any different
+  if (FHSSsubsetConfigured())
+  {
+    FHSSrandomiseFHSSsequence(OtaGetUidSeed(), config.GetBandSubset());
+  }
   ResetPower(); // Call before SetRFLinkRate(). The LR1121 Radio lib can now set the correct output power in Config().
   SetRFLinkRate(config.GetRate());
   LbtEnableIfRequired();
@@ -1015,9 +1032,13 @@ static void EnterBindingMode()
   SendUIDOverMSP();
 
   // Binding uses 50Hz, and InvertIQ
-  OtaCrcInitializer = OTA_VERSION_ID;
+  OtaUpdateCrcInit(true, 0); // binding always runs the raw domain
   OtaNonce = 0; // Lock the OtaNonce to prevent syncspam packets
   InBindingMode = true; // Set binding mode before SetRFLinkRate() for correct IQ
+
+  // Binding always uses the full domain; rebuild raw in case the active
+  // model runs a band subset (ExitBindingMode restores it)
+  FHSSrandomiseFHSSsequence(OtaGetUidSeed(), false);
 
   // Start attempting to bind
   // Lock the RF rate and freq while binding
@@ -1037,12 +1058,15 @@ static void ExitBindingMode()
   DataUlSender.ResetState();
 
   // Reset CRCInit to UID-defined value
-  OtaUpdateCrcInitFromUid();
+  OtaUpdateCrcInit(false, FHSSgetGeometryHash());
   InBindingMode = false; // Clear binding mode before SetRFLinkRate() for correct IQ
 
   UARTconnected();
 
-  SetRFLinkRate(config.GetRate()); //return to original rate
+  // Return to the selected model's rate *and* its hop geometry: binding built
+  // the raw domain, so going through SetRFLinkRate alone would leave a
+  // subset model transmitting full band until some later config commit
+  ChangeRadioParams();
 
   DBGLN("Exiting binding mode");
 }
@@ -1358,7 +1382,7 @@ static void setupBindingFromConfig()
   DBGLN("UID=(%u, %u, %u, %u, %u, %u)",
     UID[0], UID[1], UID[2], UID[3], UID[4], UID[5]);
 
-  OtaUpdateCrcInitFromUid();
+  OtaUpdateCrcInit(false, FHSSgetGeometryHash());
 }
 
 
@@ -1417,7 +1441,9 @@ void setup()
     DBGLN("Initialised devices");
 
     setupBindingFromConfig();
-    FHSSrandomiseFHSSsequence(OtaGetUidSeed());
+    // full band: config.Load() has not run yet, so the model's toggle is not
+    // readable here. ChangeRadioParams() rebuilds with it further down setup()
+    FHSSrandomiseFHSSsequence(OtaGetUidSeed(), false);
 
     Radio.RXdoneCallback = &RXdoneISR;
     Radio.TXdoneCallback = &TXdoneISR;

@@ -8,13 +8,13 @@
 
 void test_fhss_first(void)
 {
-    FHSSrandomiseFHSSsequence(0x01020304L);
+    FHSSrandomiseFHSSsequence(0x01020304L, false);
     TEST_ASSERT_EQUAL(FHSSgetInitialFreq(), FHSSconfig->freq_start + freq_spread * sync_channel / FREQ_SPREAD_SCALE);
 }
 
 void test_fhss_assignment(void)
 {
-    FHSSrandomiseFHSSsequence(0x01020304L);
+    FHSSrandomiseFHSSsequence(0x01020304L, false);
 
     const uint32_t numFhss = FHSSgetChannelCount();
     uint32_t initFreq = FHSSgetInitialFreq();
@@ -32,7 +32,7 @@ void test_fhss_assignment(void)
 
 void test_fhss_unique(void)
 {
-    FHSSrandomiseFHSSsequence(0x01020304L);
+    FHSSrandomiseFHSSsequence(0x01020304L, false);
 
     const uint32_t numFhss = FHSSgetChannelCount();
     std::set<uint32_t> freqs;
@@ -52,7 +52,7 @@ void test_fhss_unique(void)
 
 void test_fhss_same(void)
 {
-    FHSSrandomiseFHSSsequence(0x01020304L);
+    FHSSrandomiseFHSSsequence(0x01020304L, false);
 
     const uint32_t numFhss = FHSSgetSequenceCount();
 
@@ -63,7 +63,7 @@ void test_fhss_same(void)
         fhss[i] = freq;
     }
 
-    FHSSrandomiseFHSSsequence(0x01020304L);
+    FHSSrandomiseFHSSsequence(0x01020304L, false);
 
     for (unsigned int i = 0; i < FHSSgetSequenceCount(); i++) {
         uint32_t freq = FHSSgetNextFreq();
@@ -73,7 +73,7 @@ void test_fhss_same(void)
 
 void test_fhss_reg_same(void)
 {
-    FHSSrandomiseFHSSsequence(0x01020304L);
+    FHSSrandomiseFHSSsequence(0x01020304L, false);
 
     const uint32_t numFhss = FHSSgetSequenceCount();
 
