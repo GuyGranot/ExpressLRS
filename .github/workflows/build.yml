@@ -82,11 +82,12 @@ jobs:
         platformio pkg update
         PLATFORMIO_BUILD_FLAGS="-DRegulatory_Domain_ISM_2400" pio test -e native
 
-    # checks the Python decoder against frames the firmware encoder produced
+    # checks the Python decoders against frames the firmware encoders produced
     - name: Run spectrum host decoder selftest
       run: |
         cd src/python
         python rxspectrum.py --selftest
+        python rxsurvey.py --selftest
 
   # Compile checks for the optional spectrum analyzers, which no target env
   # enables: one env per radio driver, since the sweep differs between them.
@@ -106,6 +107,14 @@ jobs:
             flags: "-DTX_SPECTRUM_SCAN"
           - target: Unified_ESP32C3_LR1121_RX_via_UART
             flags: "-DRegulatory_Domain_FCC_915 -DRX_SPECTRUM_SCAN"
+          # The Phase 0 survey experiment. Built alongside RX_SPECTRUM_SCAN because
+          # that is how it is used -- the sweep provides the link-down reference the
+          # survey is compared against -- and once per radio driver, since the RSSI
+          # read is two-step on LR1121 and one-step on SX128x.
+          - target: Unified_ESP32C3_LR1121_RX_via_UART
+            flags: "-DRegulatory_Domain_FCC_915 -DRX_SPECTRUM_SCAN -DRX_SURVEY_PHASE0"
+          - target: Unified_ESP32_2400_RX_via_UART
+            flags: "-DRX_SPECTRUM_SCAN -DRX_SURVEY_PHASE0"
     steps:
     - name: Checkout
       uses: actions/checkout@v6
