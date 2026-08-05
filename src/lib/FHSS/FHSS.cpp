@@ -136,30 +136,29 @@ uint16_t FHSSrandomiseFHSSsequenceBuild(const uint32_t seed, uint32_t freqCount,
 
     rngSeed(seed);
 
-    // initialize the sequence array
-    for (uint16_t i = 0; i < sequenceCount; i++)
+    // Blocks are filled and shuffled independently, so doing both in one pass
+    // draws the same random numbers in the same order as two separate walks
+    for (uint16_t base = 0; base < sequenceCount; base += freqCount)
     {
-        if (i % freqCount == 0) {
-            inSequence[i] = syncChannel;
-        } else if (i % freqCount == syncChannel) {
-            inSequence[i] = 0;
-        } else {
-            inSequence[i] = i % freqCount;
-        }
-    }
+        // initialize the block
+        for (uint32_t j = 0; j < freqCount; j++)
+            inSequence[base + j] = j;
+        // the sync channel leads every block and the entry it displaced takes
+        // the 0. A sync channel outside the block leaves the 0 unplaced rather
+        // than writing past the block, which is what the old modulo form did
+        inSequence[base] = syncChannel;
+        if (syncChannel < freqCount)
+            inSequence[base + syncChannel] = 0;
 
-    for (uint16_t i = 0; i < sequenceCount; i++)
-    {
-        // if it's not the sync channel
-        if (i % freqCount != 0)
+        // entry 0 of each block is the sync channel and stays put
+        for (uint32_t j = 1; j < freqCount; j++)
         {
-            uint8_t offset = (i / freqCount) * freqCount;   // offset to start of current block
             uint8_t rand = rngN(freqCount - 1) + 1;         // random number between 1 and FHSS_FREQ_CNT
 
             // switch this entry and another random entry in the same block
-            uint8_t temp = inSequence[i];
-            inSequence[i] = inSequence[offset+rand];
-            inSequence[offset+rand] = temp;
+            uint8_t temp = inSequence[base + j];
+            inSequence[base + j] = inSequence[base + rand];
+            inSequence[base + rand] = temp;
         }
     }
 
