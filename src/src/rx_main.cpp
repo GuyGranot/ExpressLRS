@@ -39,6 +39,7 @@
 #include "RXOTAConnector.h"
 #include "rx-serial/devSerialIO.h"
 #include "devRxSpectrum.h"
+#include "devRxSurvey.h"
 
 #include <LittleFS.h>
 #if defined(PLATFORM_ESP8266)
@@ -97,6 +98,12 @@ device_affinity_t ui_devices[] = {
   // Core 1 (loop core), as TxSpectrum: the sweep returns DURATION_IMMEDIATELY
   // and blocks ~1.3ms per call, which keeps the watchdog fed in loop context.
   {&RxSpectrum_device, 1},
+#endif
+#if defined(RX_SURVEY_PHASE0)
+  // Core 1 is not a preference here, it is the mechanism: the drain guards the
+  // sample ring with noInterrupts(), which on ESP32 masks the current core only,
+  // and the RXdone ISR that fills the ring is attached from core 1.
+  {&RxSurvey_device, 1},
 #endif
 };
 
@@ -406,6 +413,32 @@ static void ICACHE_RAM_ATTR HandleFHSS()
     }
 #endif
     LbtCcaTimerStart();
+
+#if defined(RX_SURVEY_PHASE0)
+    // Latch what each radio just landed on, here rather than in the sample hook:
+    // by the time the next packet arrives OtaNonce has moved on, and the Gemini
+    // swap parity above cannot be reconstructed from it without re-deriving the
+    // hop. Two byte stores.
+    {
+        const uint8_t numfhss = (uint8_t)FHSSgetChannelCount();
+        const uint8_t cur = FHSSusePrimaryFreqBand ? FHSSsequence[FHSSgetCurrIndex()]
+                                                   : FHSSsequence_DualBand[FHSSgetCurrIndex()];
+        uint8_t chan1 = cur;
+        // DualBand puts radio 2 in the other band, on the other channel table --
+        // a different axis, which one frame cannot carry. Report it as absent.
+        uint8_t chan2 = FHSSuseDualBand ? SURVEY_CHAN_INVALID : cur;
+        const bool geminiSplit = geminiMode && !FHSSuseDualBand;
+        if (geminiSplit)
+        {
+            const uint8_t partner = (uint8_t)((cur + (numfhss / 2)) % numfhss);
+            const bool radio1IsPrimary =
+                ((OtaNonce / ExpressLRS_currAirRate_Modparams->FHSShopInterval) % 2) == 0;
+            chan1 = radio1IsPrimary ? cur : partner;
+            chan2 = radio1IsPrimary ? partner : cur;
+        }
+        RxSurveyNoteHop(chan1, chan2, geminiSplit);
+    }
+#endif
 }
 
 void ICACHE_RAM_ATTR LinkStatsToOta(OTA_LinkStats_s * const ls)
@@ -807,6 +840,13 @@ void LostConnection(bool resumeRx)
 
     setConnectionState(disconnected); //set lost connection
     RXtimerState = tim_disconnected;
+#if defined(RX_SURVEY_PHASE0)
+    // Drop the latched hop channels. The gates would almost certainly cover the
+    // reconnect window anyway, but "almost certainly" is not good enough for the
+    // channel index: a stale one does not look wrong, it silently files a
+    // reading under the wrong frequency and poisons the per-channel comparison.
+    RxSurveyNoteHop(SURVEY_CHAN_INVALID, SURVEY_CHAN_INVALID, false);
+#endif
     hwTimer::resetFreqOffset();
     PfdPrevRawOffset = 0;
     GotConnectionMillis = 0;
@@ -1189,6 +1229,18 @@ bool ICACHE_RAM_ATTR ProcessRFPacket(SX12xxDriverCommon::rx_status const status)
         }
     #endif
     }
+
+#if defined(RX_SURVEY_PHASE0)
+    // Last, so nothing the link depends on waits behind the offset busy-wait,
+    // and while the radio is still on the channel this packet arrived on --
+    // HandleFHSS() does not run until tock. LastPacketRSSI is the raw per-packet
+    // value, not the filtered one in linkStats, so the wanted-signal strength is
+    // paired with exactly the packet whose AGC state the sample inherits.
+    RxSurveySamplePostPacket(beginProcessing,
+                             (Radio.GetProcessingPacketRadio() == SX12XX_Radio_2)
+                                 ? Radio.LastPacketRSSI2 : Radio.LastPacketRSSI,
+                             Radio.GetProcessingPacketRadio() == SX12XX_Radio_2);
+#endif
 
     // Received a packet, that's the definition of LQ
     LQCalc.add();

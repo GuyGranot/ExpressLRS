@@ -101,6 +101,16 @@
 # receiver. Levels are uncalibrated, as above.
 #-DRX_SPECTRUM_SCAN
 
+# BENCH EXPERIMENT, NOT A FEATURE. Reads instantaneous RSSI a controlled offset after
+# each received packet on a LIVE link and streams the readings out the flight-controller
+# UART, so they can be compared per channel against a link-down RX_SPECTRUM_SCAN sweep.
+# It exists to measure whether the AGC state left by the wanted packet biases that
+# reading, which decides whether an in-flight passive survey can measure anything at all.
+# Disarmed at every boot and armed over the same UART, but while armed it BUSY-WAITS
+# INSIDE THE RXdone ISR to hit the requested offset, giving up the following packet at
+# deep offsets. Do not fly it. ESP32-family receivers only.
+#-DRX_SURVEY_PHASE0
+
 # Enable reporting of RF FreqCorrection in RX's SNR LinkStatistics, also decreases packet rate
 # on Team2.4 for the additional time needed to include the packet header / enable FreqCorrection
 # Dynamic power must be off, else it will adjust based on the FreqCorrection reported in SNR

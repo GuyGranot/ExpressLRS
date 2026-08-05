@@ -12,6 +12,10 @@
 #include "devRxSpectrum.h"
 #endif
 
+#if defined(RX_SURVEY_PHASE0)
+#include "devRxSurvey.h"
+#endif
+
 extern void reset_into_bootloader();
 
 RXEndpoint::RXEndpoint()
@@ -58,6 +62,25 @@ bool RXEndpoint::handleRaw(const crsf_header_t *message)
             RxSpectrumStart(payload[2],
                             (message->frame_size >= 6) ? payload[3] : rbwWide,
                             (message->frame_size >= 7) && payload[4] != 0);
+            return true;
+        }
+#endif
+#if defined(RX_SURVEY_PHASE0)
+        // Non CRSF, dest=s src=v -> arm/disarm the Phase 0 in-flight survey.
+        // payload[2] non-zero arms, payload[3] is the sample offset from packet
+        // end in us/4 and payload[4] the minimum sample spacing in ms. Trailing
+        // bytes are optional, matching the 'sp' trigger above.
+        //
+        // Unlike 'sp' this does NOT touch the radio or the link: it sets a
+        // volatile flag. The survey needs the RC link up, so it is armed with
+        // the transmitter on and the flight controller in passthrough.
+        if (payload[0] == 's' && payload[1] == 'v' && message->frame_size >= 5)
+        {
+            RxSurveyArm((message->frame_size >= 6)
+                            ? (uint16_t)payload[3] * SURVEY_OFFSET_QUANTUM_US : 200,
+                        (message->frame_size >= 7) ? payload[4] : 100,
+                        payload[2] != 0);
+            RxSurveySendStatus();
             return true;
         }
 #endif
