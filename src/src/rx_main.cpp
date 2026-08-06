@@ -40,6 +40,7 @@
 #include "rx-serial/devSerialIO.h"
 #include "devRxSpectrum.h"
 #include "devRxSurvey.h"
+#include "devRxFlightSurvey.h"
 
 #include <LittleFS.h>
 #if defined(PLATFORM_ESP8266)
@@ -816,6 +817,10 @@ void ICACHE_RAM_ATTR HWtimerCallbackTock()
 
     // For any serial drivers that need to send on a regular cadence (i.e. CRSF to betaflight)
     sendImmediateRC();
+
+    // Pre-hop and pre-telemetry: the radio has sat in RX_CONT on this channel
+    // for a full packet period, and the RC frame above is already on its way.
+    RxFlightSurveyTock();
 
     OtaNonce++;
     HandleFHSS();
@@ -1883,7 +1888,7 @@ void EnterBindingModeSafely()
 
 static void checkSendLinkStatsToFc(uint32_t now)
 {
-    if (now - SendLinkStatstoFCintervalLastSent > SEND_LINK_STATS_TO_FC_INTERVAL)
+    if (now - SendLinkStatstoFCintervalLastSent > RxFlightSurveyLinkStatsInterval(SEND_LINK_STATS_TO_FC_INTERVAL))
     {
         if (connectionState == disconnected)
         {
@@ -1894,6 +1899,7 @@ static void checkSendLinkStatsToFc(uint32_t now)
             SendLinkStatstoFCForcedSends)
         {
             CRSF_MK_FRAME_T(crsfLinkStatistics_t) linkStatisticsFrame;
+            RxFlightSurveyPublish();
             crsfRouter.makeLinkStatisticsPacket(&linkStatisticsFrame.h);
             // the linkStats 'originates' from the OTA connector so we don't send it back there.
             crsfRouter.deliverMessage(&otaConnector, &linkStatisticsFrame.h);

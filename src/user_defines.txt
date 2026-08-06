@@ -111,6 +111,17 @@
 # deep offsets. Do not fly it. ESP32-family receivers only.
 #-DRX_SURVEY_PHASE0
 
+# In-flight passive RF survey. Samples noise-floor RSSI on the FHSS channels the live
+# link visits -- at the top of the timer tock, never busy-waiting -- and exports one
+# sample per link-statistics frame (25 Hz while armed) through the receiver's three
+# dead downlink bytes, which Betaflight logs as debug[0..2] under
+# debug_mode = CRSF_LINK_STATISTICS_DOWN, beside GPS and aircraft state. Armed from the
+# handset Lua; volatile, no config writes, OFF at every boot. The answer it exists for:
+# aircraft self-noise under load, per-antenna comparison, per-locale spectrum. LoRa air
+# rates and ESP32-family receivers only; incompatible with DEBUG_BF_LINK_STATS. Levels
+# are uncalibrated, as above.
+#-DRX_FLIGHT_SURVEY
+
 # Enable reporting of RF FreqCorrection in RX's SNR LinkStatistics, also decreases packet rate
 # on Team2.4 for the additional time needed to include the packet header / enable FreqCorrection
 # Dynamic power must be off, else it will adjust based on the FreqCorrection reported in SNR
