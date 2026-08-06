@@ -82,6 +82,33 @@ jobs:
         platformio pkg update
         PLATFORMIO_BUILD_FLAGS="-DRegulatory_Domain_ISM_2400" pio test -e native
 
+    # The native env excludes tx_main, rx_main and config, and the target builds
+    # below all run with the subset compiled out, so nothing else compiles the
+    # link, storage and Lua code with USE_FHSS_SUBSET defined.
+    # PLATFORMIO_BUILD_FLAGS arrives as one entry, and build_flags.py drops any
+    # entry containing Regulatory_Domain_ISM_2400 whole, so naming that domain
+    # here would silently take the subset flag with it and leave this job
+    # passing having compiled the feature out. Each build is therefore checked
+    # against the flags build_flags.py actually reports, so the guard fails
+    # closed. The 2.4GHz targets set their own domain anyway; the sub-GHz one
+    # goes last so build_flags.py's trailing-anchored match still finds it.
+    - name: Compile the FHSS band subset
+      run: |
+        set -o pipefail
+        cd src
+        build_subset() {
+          local env_name="$1" flags="$2" log
+          log="$(mktemp)"
+          PLATFORMIO_BUILD_FLAGS="$flags" pio run -e "$env_name" 2>&1 | tee "$log"
+          grep -q 'build flags:.*USE_FHSS_SUBSET' "$log" || {
+            echo "::error::USE_FHSS_SUBSET never reached the compiler for $env_name"
+            exit 1
+          }
+        }
+        build_subset Unified_ESP32_2400_TX_via_UART "-DUSE_FHSS_SUBSET"
+        build_subset Unified_ESP8285_2400_RX_via_UART "-DUSE_FHSS_SUBSET"
+        build_subset Unified_ESP32_LR1121_TX_via_UART "-DUSE_FHSS_SUBSET -DRegulatory_Domain_FCC_915"
+
   targets:
     needs:
       - build-and-validate-artifacts
