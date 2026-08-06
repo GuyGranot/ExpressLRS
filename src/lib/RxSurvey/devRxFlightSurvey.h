@@ -57,8 +57,6 @@ enum
  */
 void RxFlightSurveySetMode(uint8_t mode);
 
-uint8_t RxFlightSurveyGetMode();
-
 /**
  * The sampler. Call from HWtimerCallbackTock() after sendImmediateRC() and
  * before OtaNonce++ / HandleFHSS(): the channel is still the pre-hop one, the
@@ -95,7 +93,6 @@ extern device_t RxFlightSurvey_device;
 #else
 
 static inline void RxFlightSurveySetMode(uint8_t) {}
-static inline uint8_t RxFlightSurveyGetMode() { return 0; }
 static inline void RxFlightSurveyTock() {}
 static inline void RxFlightSurveyPublish() {}
 static inline void RxFlightSurveyBenchStream(bool) {}

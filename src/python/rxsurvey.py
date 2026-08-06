@@ -271,6 +271,30 @@ def flatten(rec, t):
     return out
 
 
+# One chunk of serial data -> the per-frame handlers. The decode order (status
+# before survey: both ride the vendor frame type) lives here once, shared by the
+# Phase 0 capture and the flight-survey watch.
+def dispatch_frames(reader, data, on_link_stats, on_status, on_survey):
+    for ftype, body in reader.feed(data):
+        if ftype == CRSF_FRAMETYPE_LINK_STATISTICS:
+            ls = decode_link_statistics(body)
+            if ls is not None:
+                on_link_stats(ls)
+            continue
+        if ftype != CRSF_FRAMETYPE_ELRS_VENDOR:
+            continue
+        vp = extract_vendor_payload(body)
+        if vp is None:
+            continue
+        st = decode_status_payload(vp)
+        if st is not None:
+            on_status(st)
+            continue
+        rec = decode_survey_payload(vp)
+        if rec is not None:
+            on_survey(rec)
+
+
 class Capture:
     def __init__(self, serial_port, log_file):
         self.s = serial_port
@@ -297,31 +321,17 @@ class Capture:
                 "rssi_med": statistics.median(rssi),
                 "tx_power": self.link[-1]["txPower"], "rf_mode": self.link[-1]["rfMode"]}
 
+    def _note_status(self, st):
+        self.status = st
+
     def pump(self, seconds):
         end = time.time() + seconds
         while time.time() < end:
             data = self.s.read(256)
             if not data:
                 continue
-            for ftype, body in self.reader.feed(data):
-                if ftype == CRSF_FRAMETYPE_LINK_STATISTICS:
-                    ls = decode_link_statistics(body)
-                    if ls is not None:
-                        self.link.append(ls)
-                    continue
-                if ftype != CRSF_FRAMETYPE_ELRS_VENDOR:
-                    continue
-                vp = extract_vendor_payload(body)
-                if vp is None:
-                    continue
-                st = decode_status_payload(vp)
-                if st is not None:
-                    self.status = st
-                    continue
-                rec = decode_survey_payload(vp)
-                if rec is None:
-                    continue
-                self._take(rec)
+            dispatch_frames(self.reader, data,
+                            self.link.append, self._note_status, self._take)
 
     def _take(self, rec):
         if self.last_seq is not None:
@@ -438,7 +448,10 @@ MODE_NAMES = {0: "Off", 1: "Both", 2: "900", 3: "2.4"}
 MODE_FROM_ARG = {"off": 0, "both": 1, "900": 2, "2.4": 3}
 
 # enum_rate values of the dual-band rates: the transport's debug[2] bit 7 is a
-# band bit on these, an assignment bit everywhere else.
+# band bit on these, an assignment bit everywhere else. Mirrors RATE_LORA_DUAL_*
+# in src/include/common.h (expresslrs_RFrates_e, pinned at 100) -- extend this
+# set if the firmware ever adds a dual-band rate, or --no-stream watches will
+# misread the band bit as an assignment bit.
 DUAL_BAND_RF_MODES = {100, 101}
 
 
@@ -461,7 +474,8 @@ def run_watch(args):
     state = {"toggle": None, "dual": None, "status": None, "gates": 0,
              "chanCount": None, "chanCount2": None}
 
-    def note_link_stats(ls, now):
+    def note_link_stats(ls):
+        now = time.time()
         counts["frames"] += 1
         d = unpack_debug(*ls["debug"])
         if state["dual"] is None:
@@ -486,6 +500,20 @@ def run_watch(args):
                 counts["matched"] += 1
                 del stream_recent[:i + 1]
                 break
+
+    def note_status(st):
+        if state["status"] is None:
+            dbg_print("  receiver: %s, mode %s, export interval %d ms"
+                      % ("ARMED" if st["armed"] else "disarmed",
+                         MODE_NAMES.get(st.get("mode", -1), "?"),
+                         st["periodMs"]))
+            if not st["armed"] and mode is None:
+                dbg_print("  (arm from the handset Lua, or rerun with --mode)")
+        state["status"] = st
+
+    def note_survey(rec):
+        state["gates"] |= rec["flags"] & ALL_GATES
+        note_stream(rec)
 
     def note_stream(rec):
         state["chanCount"] = rec["channelCount"]
@@ -512,38 +540,12 @@ def run_watch(args):
         status_deadline = time.time() + 1.5
         while time.time() < end:
             data = s.read(256)
-            now = time.time()
-            if state["status"] is None and now > status_deadline:
+            if state["status"] is None and time.time() > status_deadline:
                 dbg_print("  no answer -- is the receiver built with -DRX_FLIGHT_SURVEY?")
                 return 1
             if not data:
                 continue
-            for ftype, body in reader.feed(data):
-                if ftype == CRSF_FRAMETYPE_LINK_STATISTICS:
-                    ls = decode_link_statistics(body)
-                    if ls is not None:
-                        note_link_stats(ls, now)
-                    continue
-                if ftype != CRSF_FRAMETYPE_ELRS_VENDOR:
-                    continue
-                vp = extract_vendor_payload(body)
-                if vp is None:
-                    continue
-                st = decode_status_payload(vp)
-                if st is not None:
-                    if state["status"] is None:
-                        dbg_print("  receiver: %s, mode %s, export interval %d ms"
-                                  % ("ARMED" if st["armed"] else "disarmed",
-                                     MODE_NAMES.get(st.get("mode", -1), "?"),
-                                     st["periodMs"]))
-                        if not st["armed"] and mode is None:
-                            dbg_print("  (arm from the handset Lua, or rerun with --mode)")
-                    state["status"] = st
-                    continue
-                rec = decode_survey_payload(vp)
-                if rec is not None:
-                    state["gates"] |= rec["flags"] & ALL_GATES
-                    note_stream(rec)
+            dispatch_frames(reader, data, note_link_stats, note_status, note_survey)
     except KeyboardInterrupt:
         dbg_print("\ninterrupted")
     finally:
@@ -566,19 +568,18 @@ def run_watch(args):
         clean = sum(1 for r in samples if r["clean"])
         dbg_print("  clean-sample ratio %.0f%% (no wanted packet in the sample's period)"
                   % (100.0 * clean / len(samples)))
+        def cov_text(chans, total):
+            return ("%d/%d" % (len(chans), total)) if total else "%d" % len(chans)
+
         if state["dual"]:
             for band, total in (("900", state["chanCount"]), ("2.4", state["chanCount2"])):
                 rows = [r for r in samples if r.get("band") == band]
-                chans = {r["chan"] for r in rows}
-                cov = ("%d/%d channels" % (len(chans), total)) if total else \
-                      ("%d channels" % len(chans))
-                dbg_print("  band %s: %d samples (%.1f Hz), %s seen"
-                          % (band, len(rows), len(rows) / span, cov))
+                dbg_print("  band %s: %d samples (%.1f Hz), %s channels seen"
+                          % (band, len(rows), len(rows) / span,
+                             cov_text({r["chan"] for r in rows}, total)))
         else:
-            chans = {r["chan"] for r in samples}
-            cov = ("%d/%d" % (len(chans), state["chanCount"])) if state["chanCount"] \
-                  else "%d" % len(chans)
-            dbg_print("  %s distinct channels seen" % cov)
+            dbg_print("  %s distinct channels seen"
+                      % cov_text({r["chan"] for r in samples}, state["chanCount"]))
     if counts["stream"]:
         dbg_print("  0x83 stream: %d samples; %d/%d debug samples matched it exactly"
                   % (counts["stream"], counts["matched"], len(samples)))

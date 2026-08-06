@@ -8,26 +8,13 @@
 #include "common.h"
 #include "device.h"
 #include "logging.h"
-#include "CRSFRouter.h"
 #include "crsf_protocol.h"
-#include "RXOTAConnector.h"
 #include "FHSS.h"
 #include "LBT.h"
 #include "LQCALC.h"
 #include "OTA.h"
 // NB: no #include "hardware.h" -- it has no include guard and arrives via
 // common.h -> targets.h. Including it directly is a redefinition error.
-
-#include <string.h>
-
-extern RXOTAConnector otaConnector; // the source to exclude when routing to serial
-
-// Checked here as well as in devRxSurvey.cpp: either feature can build alone.
-static_assert(sizeof(crsf_ext_header_t) + SURVEY_MAX_PAYLOAD_BYTES + CRSF_FRAME_CRC_SIZE
-                  <= CRSF_MAX_PACKET_LEN,
-              "survey frame exceeds CRSF_MAX_PACKET_LEN");
-static_assert(SURVEY_MAX_PAYLOAD_BYTES <= CRSF_PAYLOAD_SIZE_MAX,
-              "survey payload exceeds CRSF_PAYLOAD_SIZE_MAX");
 
 // Owned by rx_main.cpp. Read directly: the hook runs inside the tock ISR, which
 // on ESP32 cannot be preempted by the RXdone ISR that writes some of these.
@@ -37,10 +24,15 @@ extern uint8_t antenna;
 extern uint8_t geminiMode;
 extern LQCALC<100> LQCalc;
 
-#define FLIGHT_SURVEY_MIN_LQ 70       // below this the link is already struggling
-#define FLIGHT_SURVEY_WINDOW_US 40000 // one sample per 25 Hz export window
-#define FLIGHT_SURVEY_GRACE_US 80000  // how long a covered dwell may be deferred
-#define FLIGHT_SURVEY_LOOKAHEAD 16    // sequence entries scanned when deferring
+#define FLIGHT_SURVEY_MIN_LQ 70 // below this the link is already struggling
+
+// The export cadence. One constant drives the sampling window, the link-stats
+// interval while armed, and the figure the status frame reports, so the three
+// cannot drift apart.
+#define FLIGHT_SURVEY_EXPORT_INTERVAL_MS 40 // 25 Hz
+#define FLIGHT_SURVEY_WINDOW_US (FLIGHT_SURVEY_EXPORT_INTERVAL_MS * 1000)
+#define FLIGHT_SURVEY_GRACE_US (2 * FLIGHT_SURVEY_WINDOW_US) // covered-dwell deferral bound
+#define FLIGHT_SURVEY_LOOKAHEAD 16 // sequence entries scanned when deferring
 
 // Phase 0's one hard number: after a stronger-than-this wanted packet, SX128x
 // AGC still reads tens of dB high at the tock (recovery needs ~600 us close-in,
@@ -51,10 +43,13 @@ extern LQCALC<100> LQCalc;
 static volatile uint8_t surveyMode; // FLIGHT_SURVEY_*; static init = OFF at boot
 static int8_t lnaGainDb;
 
-// Coverage bitmaps, one per band axis (96 bits covers the 80-channel grid).
+// Coverage bitmaps, one per band axis. 96 bits covers the 80-channel grid;
+// ChanCovered treats anything past the end as covered, so a hypothetical wider
+// domain degrades to unscheduled sampling instead of indexing out of bounds.
 // ISR-only while armed; SetMode stops the ISR before touching them.
-static uint32_t covered1[3];
-static uint32_t covered2[3];
+#define FLIGHT_SURVEY_COVERAGE_BITS 96
+static uint32_t covered1[FLIGHT_SURVEY_COVERAGE_BITS / 32];
+static uint32_t covered2[FLIGHT_SURVEY_COVERAGE_BITS / 32];
 static uint8_t coveredCount1, coveredCount2;
 static uint8_t chanCount1, chanCount2;
 static volatile uint8_t coverageGen;
@@ -65,8 +60,7 @@ static uint8_t lastRadioType = 0xFF; // forces a coverage reset on first entry
 // are one logical record and must never tear. {127,127,127} = "no sample yet".
 static volatile uint8_t stagedBytes[3] = {SURVEY_DBG_MAG_INVALID, SURVEY_DBG_MAG_INVALID,
                                           SURVEY_DBG_CHAN_NONE};
-static bool toggle;
-static uint8_t exportSeq;
+static bool toggle; // freshness bit; its parity doubles as the band alternation
 static uint32_t lastStageUs;
 
 // Worst-case time the hook has added to a tock, for the link A/B soak. The
@@ -99,6 +93,10 @@ static uint32_t lastStatusMs;
 
 static bool ICACHE_RAM_ATTR ChanCovered(const uint32_t *const map, const uint8_t chan)
 {
+    if (chan >= FLIGHT_SURVEY_COVERAGE_BITS)
+    {
+        return true; // out of tracking range: never interesting, never marked
+    }
     return (map[chan >> 5] >> (chan & 31)) & 1;
 }
 
@@ -113,7 +111,7 @@ static void ICACHE_RAM_ATTR MarkChan(uint32_t *const map, uint8_t *const count, 
 
 static void ICACHE_RAM_ATTR ResetCoverage()
 {
-    for (uint8_t i = 0; i < 3; i++)
+    for (uint8_t i = 0; i < FLIGHT_SURVEY_COVERAGE_BITS / 32; i++)
     {
         covered1[i] = 0;
         covered2[i] = 0;
@@ -137,7 +135,6 @@ void RxFlightSurveySetMode(uint8_t mode)
     stagedBytes[1] = SURVEY_DBG_MAG_INVALID;
     stagedBytes[2] = SURVEY_DBG_CHAN_NONE;
     toggle = false;
-    exportSeq = 0;
     coverageGen = 0;
     lastRadioType = 0xFF; // the hook re-derives the maps on its first entry
     worstTockUs = 0;
@@ -163,14 +160,10 @@ void RxFlightSurveySetMode(uint8_t mode)
     DBGLN("FlightSurvey: mode %u, lna %d dB", mode, lnaGainDb);
 }
 
-uint8_t RxFlightSurveyGetMode()
-{
-    return surveyMode;
-}
-
 uint32_t RxFlightSurveyLinkStatsInterval(const uint32_t defaultIntervalMs)
 {
-    return (surveyMode != FLIGHT_SURVEY_OFF) ? 40 : defaultIntervalMs;
+    return (surveyMode != FLIGHT_SURVEY_OFF) ? FLIGHT_SURVEY_EXPORT_INTERVAL_MS
+                                             : defaultIntervalMs;
 }
 
 void RxFlightSurveyPublish()
@@ -186,6 +179,44 @@ void RxFlightSurveyPublish()
     interrupts();
 }
 
+// Why sampling is not happening: one encoding for the tock's gate stack and the
+// loop-context heartbeat frame both, so the two cannot drift apart and a blocked
+// gate is always visible on the wire.
+static uint8_t ICACHE_RAM_ATTR EvaluateGates()
+{
+    uint8_t gates = 0;
+    // The radio is unavailable to the survey: torn down for WiFi AP / BLE
+    // joystick / the link-down sweep, or (CE builds) owned by LBT's own CCA
+    // RSSI reads. Constant-false LbtIsEnabled folds out of non-CE builds.
+    if (LbtIsEnabled ||
+        connectionState == wifiUpdate || connectionState == bleJoystick ||
+        connectionState == spectrumScan)
+    {
+        gates |= SURVEY_FLAG_GATED_RADIO;
+    }
+    if (connectionState != connected)
+    {
+        gates |= SURVEY_FLAG_GATED_LINK;
+    }
+    if (RXtimerState != tim_locked)
+    {
+        gates |= SURVEY_FLAG_GATED_TIMER;
+    }
+    if (!RadioBandMod::isLoRa(ExpressLRS_currAirRate_Modparams->radio_type))
+    {
+        gates |= SURVEY_FLAG_GATED_RATE;
+    }
+    if (InBindingMode)
+    {
+        gates |= SURVEY_FLAG_GATED_BINDING;
+    }
+    if (uplinkLQ < FLIGHT_SURVEY_MIN_LQ)
+    {
+        gates |= SURVEY_FLAG_GATED_LQ;
+    }
+    return gates;
+}
+
 void ICACHE_RAM_ATTR RxFlightSurveyTock()
 {
     const uint8_t mode = surveyMode;
@@ -193,34 +224,23 @@ void ICACHE_RAM_ATTR RxFlightSurveyTock()
     {
         return; // the whole disarmed cost: one RAM read and this branch
     }
-    if (LbtIsEnabled)
-    {
-        return; // CE builds: never contend with the CCA's own RSSI reads
-    }
 
+    // Cheapest rejector first: on a healthy link the vast majority of armed
+    // tocks fail only this window check, so they never pay for the gates.
     const uint32_t t0 = micros();
-
-    if (connectionState != connected || RXtimerState != tim_locked || InBindingMode)
+    if ((uint32_t)(t0 - lastStageUs) < FLIGHT_SURVEY_WINDOW_US)
     {
         return;
     }
-    if (uplinkLQ < FLIGHT_SURVEY_MIN_LQ)
+    if (EvaluateGates() != 0)
     {
         return;
     }
     const uint8_t rt = ExpressLRS_currAirRate_Modparams->radio_type;
-    if (!RadioBandMod::isLoRa(rt))
-    {
-        return;
-    }
     // This hook runs before OtaNonce++, HandleSendDataDl tests the incremented
     // nonce, so +1 asks "is this tock about to key up telemetry" -- skip it.
     if (ExpressLRS_currTlmDenom > 1 &&
         ((uint8_t)(OtaNonce + 1) % ExpressLRS_currTlmDenom) == 0)
-    {
-        return;
-    }
-    if ((uint32_t)(t0 - lastStageUs) < FLIGHT_SURVEY_WINDOW_US)
     {
         return;
     }
@@ -255,9 +275,9 @@ void ICACHE_RAM_ATTR RxFlightSurveyTock()
 
     // Pre-hop channels: HandleFHSS has not run yet this tock, so FHSSptr still
     // names the dwell the radio is sitting on.
-    const uint16_t seqCount = FHSSgetSequenceCount();
+    const uint8_t *const seq = FHSSusePrimaryFreqBand ? FHSSsequence : FHSSsequence_DualBand;
     const uint8_t idx = FHSSptr;
-    const uint8_t chanP = FHSSusePrimaryFreqBand ? FHSSsequence[idx] : FHSSsequence_DualBand[idx];
+    const uint8_t chanP = seq[idx];
     const uint8_t chanS = dualBandRate ? FHSSsequence_DualBand[idx] : SURVEY_CHAN_INVALID;
 
     // Gemini: the radios wear cur/partner alternately; parity says which.
@@ -289,17 +309,20 @@ void ICACHE_RAM_ATTR RxFlightSurveyTock()
                                ExpressLRS_currAirRate_Modparams->FHSShopInterval;
         if (sinceStage < FLIGHT_SURVEY_GRACE_US && hopUs != 0)
         {
+            const uint16_t seqCount = FHSSgetSequenceCount();
             uint32_t reach = (FLIGHT_SURVEY_GRACE_US - sinceStage) / hopUs;
             if (reach > FLIGHT_SURVEY_LOOKAHEAD)
             {
                 reach = FLIGHT_SURVEY_LOOKAHEAD;
             }
+            uint16_t n = idx;
             for (uint32_t i = 1; i <= reach; i++)
             {
-                const uint16_t n = (uint16_t)((idx + i) % seqCount);
-                if (sample1 && !ChanCovered(covered1, FHSSusePrimaryFreqBand
-                                                          ? FHSSsequence[n]
-                                                          : FHSSsequence_DualBand[n]))
+                if (++n >= seqCount)
+                {
+                    n = 0;
+                }
+                if (sample1 && !ChanCovered(covered1, seq[n]))
                 {
                     return; // an uncovered dwell is reachable; wait for it
                 }
@@ -355,9 +378,11 @@ void ICACHE_RAM_ATTR RxFlightSurveyTock()
     bool bit7;
     if (dualBandRate)
     {
-        // Alternate the band whose index debug[2] carries; bit 7 names it. With
-        // one band deselected the other rides every sample at full cadence.
-        const bool use2G4 = sample2 && (!sample1 || (exportSeq & 1));
+        // Alternate the band whose index debug[2] carries; bit 7 names it. The
+        // freshness toggle flips once per sample, so its pre-flip value is the
+        // alternation phase for free. With one band deselected the other rides
+        // every sample at full cadence.
+        const bool use2G4 = sample2 && (!sample1 || toggle);
         chanByte = use2G4 ? chanS : chanP;
         bit7 = use2G4;
     }
@@ -380,7 +405,6 @@ void ICACHE_RAM_ATTR RxFlightSurveyTock()
     stagedBytes[0] = bytes[0];
     stagedBytes[1] = bytes[1];
     stagedBytes[2] = bytes[2];
-    exportSeq++;
     lastStageUs = t0;
 
     if (benchStream)
@@ -428,13 +452,7 @@ void ICACHE_RAM_ATTR RxFlightSurveyTock()
     }
     if (done)
     {
-        for (uint8_t i = 0; i < 3; i++)
-        {
-            covered1[i] = 0;
-            covered2[i] = 0;
-        }
-        coveredCount1 = 0;
-        coveredCount2 = 0;
+        ResetCoverage();
         coverageGen++;
     }
 
@@ -450,50 +468,6 @@ void ICACHE_RAM_ATTR RxFlightSurveyTock()
  * it idles at a slow poll unless a host has asked for the stream.
  */
 
-// Why sampling is not happening, for the heartbeat frame. Loop context; the
-// tock hook evaluates the same conditions inline for itself.
-static uint8_t EvaluateGates()
-{
-    uint8_t gates = 0;
-    if (connectionState == wifiUpdate || connectionState == bleJoystick ||
-        connectionState == spectrumScan)
-    {
-        gates |= SURVEY_FLAG_GATED_RADIO;
-    }
-    if (connectionState != connected)
-    {
-        gates |= SURVEY_FLAG_GATED_LINK;
-    }
-    if (RXtimerState != tim_locked)
-    {
-        gates |= SURVEY_FLAG_GATED_TIMER;
-    }
-    if (!RadioBandMod::isLoRa(ExpressLRS_currAirRate_Modparams->radio_type))
-    {
-        gates |= SURVEY_FLAG_GATED_RATE;
-    }
-    if (InBindingMode)
-    {
-        gates |= SURVEY_FLAG_GATED_BINDING;
-    }
-    if (uplinkLQ < FLIGHT_SURVEY_MIN_LQ)
-    {
-        gates |= SURVEY_FLAG_GATED_LQ;
-    }
-    return gates;
-}
-
-// RX -> flight controller / host, mirroring devRxSpectrum's SendVendorFrame.
-static void SendVendorFrame(uint8_t *const buf, const uint8_t payloadLen)
-{
-    crsfRouter.SetExtendedHeaderAndCrc((crsf_ext_header_t *)buf,
-                                       CRSF_FRAMETYPE_ELRS_VENDOR,
-                                       CRSF_EXT_FRAME_SIZE(payloadLen),
-                                       CRSF_ADDRESS_FLIGHT_CONTROLLER,
-                                       CRSF_ADDRESS_CRSF_RECEIVER);
-    crsfRouter.deliverMessage(&otaConnector, (crsf_header_t *)buf);
-}
-
 void RxFlightSurveySendStatus()
 {
     uint8_t buf[sizeof(crsf_ext_header_t) + SURVEY_STATUS_EXT_PAYLOAD_BYTES + CRSF_FRAME_CRC_SIZE];
@@ -503,12 +477,12 @@ void RxFlightSurveySendStatus()
     payload[1] = SURVEY_PROTO_VERSION;
     payload[2] = (surveyMode != FLIGHT_SURVEY_OFF) ? SURVEY_STATUS_ARMED : SURVEY_STATUS_DISARMED;
     payload[3] = 0; // no controlled offset: the read site is the tock
-    payload[4] = (surveyMode != FLIGHT_SURVEY_OFF) ? 40 : 0; // export interval, ms
+    payload[4] = (surveyMode != FLIGHT_SURVEY_OFF) ? FLIGHT_SURVEY_EXPORT_INTERVAL_MS : 0;
     payload[5] = (uint8_t)(worst >> 8);
     payload[6] = (uint8_t)worst;
     payload[7] = surveyMode;
     payload[8] = coverageGen;
-    SendVendorFrame(buf, SURVEY_STATUS_EXT_PAYLOAD_BYTES);
+    SurveySendVendorFrame(buf, SURVEY_STATUS_EXT_PAYLOAD_BYTES);
 }
 
 void RxFlightSurveyBenchStream(const bool on)
@@ -551,36 +525,17 @@ static int timeout()
     interrupts();
 
     const uint32_t now = millis();
+    // dropped != 0 implies count > 0: samples are only dropped against a full
+    // ring, and only this drain empties it -- so a nonzero drop count always
+    // rides out on a data frame and never needs folding back.
     if (count > 0 || (uint32_t)(now - lastEmitMs) >= FLIGHT_SURVEY_HEARTBEAT_INTERVAL_MS)
     {
-        uint8_t buf[sizeof(crsf_ext_header_t) + SURVEY_MAX_PAYLOAD_BYTES + CRSF_FRAME_CRC_SIZE];
-
-        surveyFrameInfo_t info;
-        memset(&info, 0, sizeof(info));
-        info.flags = (uint8_t)(EvaluateGates() | SURVEY_FLAG_ARMED |
-                               (isDualRadio() ? SURVEY_FLAG_DUAL_RADIO : 0));
-        info.seq = frameSeq++;
-        info.enumRate = ExpressLRS_currAirRate_Modparams->enum_rate;
-        info.bwKhz = SurveyLinkBandwidthKhz();
-        info.lnaGainDb = lnaGainDb;
-        info.dropped = dropped;
-        info.sampleCount = count;
-        SurveyFillAxis(&info);
-
-        const uint8_t len = SurveyEncodeFrame(buf + sizeof(crsf_ext_header_t),
-                                              count > 0 ? batch : nullptr, &info);
-        if (len != 0)
-        {
-            SendVendorFrame(buf, len);
-        }
+        SurveyEmitDataFrame((uint8_t)(EvaluateGates() | SURVEY_FLAG_ARMED |
+                                      (isDualRadio() ? SURVEY_FLAG_DUAL_RADIO : 0)),
+                            0 /* no controlled offset: the read site is the tock */,
+                            lnaGainDb, frameSeq++,
+                            count > 0 ? batch : nullptr, count, dropped);
         lastEmitMs = now;
-    }
-    else if (dropped != 0)
-    {
-        // Nothing to carry it on; fold it back so the count is not lost.
-        noInterrupts();
-        droppedSamples += dropped;
-        interrupts();
     }
 
     if ((uint32_t)(now - lastStatusMs) >= FLIGHT_SURVEY_STATUS_INTERVAL_MS)
