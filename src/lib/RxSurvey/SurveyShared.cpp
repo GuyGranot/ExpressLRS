@@ -3,6 +3,21 @@
 #include "SurveyShared.h"
 
 #include "FHSS.h"
+#include "CRSFRouter.h"
+#include "crsf_protocol.h"
+#include "RXOTAConnector.h"
+
+#include <string.h>
+
+extern RXOTAConnector otaConnector; // the source to exclude when routing to serial
+
+// Checked once here: SurveyProtocol.h has no CRSF includes to check against,
+// and this file is compiled whenever either feature is.
+static_assert(sizeof(crsf_ext_header_t) + SURVEY_MAX_PAYLOAD_BYTES + CRSF_FRAME_CRC_SIZE
+                  <= CRSF_MAX_PACKET_LEN,
+              "survey frame exceeds CRSF_MAX_PACKET_LEN");
+static_assert(SURVEY_MAX_PAYLOAD_BYTES <= CRSF_PAYLOAD_SIZE_MAX,
+              "survey payload exceeds CRSF_PAYLOAD_SIZE_MAX");
 
 int8_t ICACHE_RAM_ATTR SurveyReadRssiInst(const SX12XX_Radio_Number_t radio)
 {
@@ -56,6 +71,42 @@ void SurveyFillAxis(surveyFrameInfo_t *const info)
         AxisFromConfig(FHSSconfigDualBand, freq_spread_DualBand,
                        &info->startFreqKhz2, &info->stepKhz2);
         info->channelCount2 = (uint8_t)FHSSconfigDualBand->freq_count;
+    }
+}
+
+void SurveySendVendorFrame(uint8_t *const buf, const uint8_t payloadLen)
+{
+    crsfRouter.SetExtendedHeaderAndCrc((crsf_ext_header_t *)buf,
+                                       CRSF_FRAMETYPE_ELRS_VENDOR,
+                                       CRSF_EXT_FRAME_SIZE(payloadLen),
+                                       CRSF_ADDRESS_FLIGHT_CONTROLLER,
+                                       CRSF_ADDRESS_CRSF_RECEIVER);
+    crsfRouter.deliverMessage(&otaConnector, (crsf_header_t *)buf);
+}
+
+void SurveyEmitDataFrame(const uint8_t flags, const uint8_t reqOffsetQus,
+                         const int8_t lnaGainDb, const uint8_t seq,
+                         const surveySample_t *const samples, const uint8_t count,
+                         const uint16_t dropped)
+{
+    uint8_t buf[sizeof(crsf_ext_header_t) + SURVEY_MAX_PAYLOAD_BYTES + CRSF_FRAME_CRC_SIZE];
+
+    surveyFrameInfo_t info;
+    memset(&info, 0, sizeof(info));
+    info.flags = flags;
+    info.seq = seq;
+    info.reqOffsetQus = reqOffsetQus;
+    info.enumRate = ExpressLRS_currAirRate_Modparams->enum_rate;
+    info.bwKhz = SurveyLinkBandwidthKhz();
+    info.lnaGainDb = lnaGainDb;
+    info.dropped = dropped;
+    info.sampleCount = count;
+    SurveyFillAxis(&info);
+
+    const uint8_t len = SurveyEncodeFrame(buf + sizeof(crsf_ext_header_t), samples, &info);
+    if (len != 0)
+    {
+        SurveySendVendorFrame(buf, len);
     }
 }
 

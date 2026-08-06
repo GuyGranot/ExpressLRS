@@ -38,4 +38,20 @@ void SurveyFillAxis(surveyFrameInfo_t *info);
  */
 uint16_t SurveyLinkBandwidthKhz();
 
+/**
+ * RX -> flight controller / host: stamp the vendor-frame header and CRC on buf
+ * (payload already written past the extended header) and route it, mirroring
+ * devRxSpectrum's SendVendorFrame. Loop context.
+ */
+void SurveySendVendorFrame(uint8_t *buf, uint8_t payloadLen);
+
+/**
+ * Build and send one data (or sample-less heartbeat) frame. Everything the
+ * caller does not pass -- rate, bandwidth, the channel axes -- is read from the
+ * live link; flags come from the caller because the two features' gates mean
+ * different things. Loop context.
+ */
+void SurveyEmitDataFrame(uint8_t flags, uint8_t reqOffsetQus, int8_t lnaGainDb, uint8_t seq,
+                         const surveySample_t *samples, uint8_t count, uint16_t dropped);
+
 #endif // RX_SURVEY_PHASE0 || RX_FLIGHT_SURVEY

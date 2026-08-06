@@ -8,13 +8,9 @@
 #include "common.h"
 #include "device.h"
 #include "logging.h"
-#include "CRSFRouter.h"
 #include "crsf_protocol.h"
-#include "RXOTAConnector.h"
 // NB: no #include "hardware.h" -- it has no include guard and arrives via
 // common.h -> targets.h. Including it directly is a redefinition error.
-
-#include <string.h>
 
 /*
  * Phase 0 bench instrumentation. See devRxSurvey.h for what it measures and why
@@ -27,17 +23,6 @@
  * passthrough -- but unlike the sweep this one REQUIRES a live RC link, so the
  * transmitter stays on and the flight controller stays in passthrough.
  */
-
-extern RXOTAConnector otaConnector; // the RF-side connector, used only as the
-                                    // "source" to exclude when routing our frames
-                                    // to the serial (FC/host) connector.
-
-// Checked here: SurveyProtocol.h has no CRSF includes to check against.
-static_assert(sizeof(crsf_ext_header_t) + SURVEY_MAX_PAYLOAD_BYTES + CRSF_FRAME_CRC_SIZE
-                  <= CRSF_MAX_PACKET_LEN,
-              "survey frame exceeds CRSF_MAX_PACKET_LEN");
-static_assert(SURVEY_MAX_PAYLOAD_BYTES <= CRSF_PAYLOAD_SIZE_MAX,
-              "survey payload exceeds CRSF_PAYLOAD_SIZE_MAX");
 
 // Power of two so the wrap is a mask. 16 slots is ~1.6 s of headroom at the
 // default 100 ms sample period, far more than the 20 ms drain interval needs;
@@ -225,17 +210,6 @@ void ICACHE_RAM_ATTR RxSurveySamplePostPacket(const uint32_t packetEndUs,
     ringHead = next;
 }
 
-// RX -> flight controller / host, mirroring devRxSpectrum's SendVendorFrame.
-static void SendVendorFrame(uint8_t *const buf, const uint8_t payloadLen)
-{
-    crsfRouter.SetExtendedHeaderAndCrc((crsf_ext_header_t *)buf,
-                                       CRSF_FRAMETYPE_ELRS_VENDOR,
-                                       CRSF_EXT_FRAME_SIZE(payloadLen),
-                                       CRSF_ADDRESS_FLIGHT_CONTROLLER,
-                                       CRSF_ADDRESS_CRSF_RECEIVER);
-    crsfRouter.deliverMessage(&otaConnector, (crsf_header_t *)buf);
-}
-
 void RxSurveySendStatus()
 {
     uint8_t buf[sizeof(crsf_ext_header_t) + SURVEY_STATUS_PAYLOAD_BYTES + CRSF_FRAME_CRC_SIZE];
@@ -245,34 +219,7 @@ void RxSurveySendStatus()
     payload[2] = armed ? SURVEY_STATUS_ARMED : SURVEY_STATUS_DISARMED;
     payload[3] = (uint8_t)(reqOffsetUs / SURVEY_OFFSET_QUANTUM_US);
     payload[4] = (uint8_t)(samplePeriodUs / 1000);
-    SendVendorFrame(buf, SURVEY_STATUS_PAYLOAD_BYTES);
-}
-
-static void EmitFrame(const surveySample_t *const samples, const uint8_t count,
-                      const uint16_t dropped)
-{
-    uint8_t buf[sizeof(crsf_ext_header_t) + SURVEY_MAX_PAYLOAD_BYTES + CRSF_FRAME_CRC_SIZE];
-
-    surveyFrameInfo_t info;
-    memset(&info, 0, sizeof(info));
-    info.flags = (uint8_t)(EvaluateGates() |
-                           (armed ? SURVEY_FLAG_ARMED : 0) |
-                           (isDualRadio() ? SURVEY_FLAG_DUAL_RADIO : 0));
-    info.seq = frameSeq++;
-    info.reqOffsetQus = (uint8_t)(reqOffsetUs / SURVEY_OFFSET_QUANTUM_US);
-    info.enumRate = ExpressLRS_currAirRate_Modparams->enum_rate;
-    info.bwKhz = SurveyLinkBandwidthKhz();
-    info.lnaGainDb = lnaGainDb;
-    info.dropped = dropped;
-    info.sampleCount = count;
-    SurveyFillAxis(&info);
-
-    const uint8_t len = SurveyEncodeFrame(buf + sizeof(crsf_ext_header_t), samples, &info);
-    if (len == 0)
-    {
-        return;
-    }
-    SendVendorFrame(buf, len);
+    SurveySendVendorFrame(buf, SURVEY_STATUS_PAYLOAD_BYTES);
 }
 
 static int start()
@@ -312,7 +259,12 @@ static int timeout()
     // flags, so "no samples" always comes with a reason attached.
     if (count > 0 || (uint32_t)(now - lastEmitMs) >= SURVEY_HEARTBEAT_INTERVAL_MS)
     {
-        EmitFrame(count > 0 ? batch : nullptr, count, dropped);
+        SurveyEmitDataFrame((uint8_t)(EvaluateGates() |
+                                      (armed ? SURVEY_FLAG_ARMED : 0) |
+                                      (isDualRadio() ? SURVEY_FLAG_DUAL_RADIO : 0)),
+                            (uint8_t)(reqOffsetUs / SURVEY_OFFSET_QUANTUM_US),
+                            lnaGainDb, frameSeq++,
+                            count > 0 ? batch : nullptr, count, dropped);
         lastEmitMs = now;
     }
     else if (dropped != 0)
