@@ -819,7 +819,8 @@ static void ConfigChangeCommit()
 
 static void CheckConfigChangePending()
 {
-  if (config.IsModified() || ModelUpdatePending)
+  const bool configPending = config.IsModified() || ModelUpdatePending;
+  if (configPending || optionsSavePending())
   {
     // Keep transmitting sync packets until the spam counter runs out
     if (syncSpamCounter > 0)
@@ -838,7 +839,19 @@ static void CheckConfigChangePending()
       Radio.SetTxIdleMode();
       TelemetryRcvPhase = ttrpTransmitting;
     }
-    ConfigChangeCommit();
+    // options.json blocks on flash exactly as the config commit does, so it is
+    // written under the same guard. Deliberately not routed through
+    // ConfigChangeCommit(): that rebuilds the geometry and would drop the link
+    // for an edit that only changed a stored definition.
+    saveOptionsIfPending();
+    if (configPending)
+    {
+      ConfigChangeCommit();
+    }
+    else
+    {
+      commitInProgress = false;
+    }
   }
 }
 

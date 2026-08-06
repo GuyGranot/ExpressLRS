@@ -13,11 +13,16 @@
 #endif
 #define FreqCorrectionMin (-FreqCorrectionMax)
 
+// The two directions sit together so they cannot be updated separately. The
+// reverse is only for showing a table value to a human, so it is a double and
+// the caller rounds; nothing on a hop path uses it.
 #if defined(RADIO_LR1121)
 #define FREQ_HZ_TO_REG_VAL(freq) (freq)
+#define REG_VAL_TO_FREQ_HZ(val) ((double)(val))
 #define FREQ_SPREAD_SCALE 1
 #else
 #define FREQ_HZ_TO_REG_VAL(freq) ((uint32_t)((double)freq/(double)FREQ_STEP))
+#define REG_VAL_TO_FREQ_HZ(val) ((double)(val)*(double)FREQ_STEP)
 #define FREQ_SPREAD_SCALE 256
 #endif
 
@@ -58,28 +63,46 @@ extern uint_fast8_t sync_channel_DualBand;
 extern const fhss_config_t *FHSSconfigDualBand;
 
 #if defined(USE_FHSS_SUBSET)
+// Which physical band each domain table carries is the one radio-family fact
+// this feature needs: on an SX128X the primary domain is 2.4GHz, everywhere
+// else it is sub-GHz and the dual-band table is 2.4GHz. Stated once here; every
+// band-to-table and band-to-option mapping derives from it, as does whether a
+// band is fitted at all.
+#if defined(RADIO_SX128X)
+static constexpr fhss_band_e PRIMARY_BAND = FHSS_BAND_2G4;
+#else
+static constexpr fhss_band_e PRIMARY_BAND = FHSS_BAND_SUBGHZ;
+#endif
+static constexpr fhss_band_e SECONDARY_BAND =
+    PRIMARY_BAND == FHSS_BAND_SUBGHZ ? FHSS_BAND_2G4 : FHSS_BAND_SUBGHZ;
+
+// Whether this radio has a band at all - a compile-time fact, unlike the domain
+// tables, which are not populated until the first sequence build
+static constexpr bool FHSSbandFitted(fhss_band_e band)
+{
+#if defined(FHSS_HAS_DUAL_BAND)
+    return band == PRIMARY_BAND || band == SECONDARY_BAND;
+#else
+    return band == PRIMARY_BAND;
+#endif
+}
+
 // Effective (possibly subset-restricted) geometry, per band: first raw-grid
 // channel and channel count of the effective domain. With no subset active they
 // are 0 and the raw domain count; freq_spread is never changed by a subset.
 extern bool FHSSsubsetActive;
 extern uint_fast8_t subset_offset;
 extern uint32_t effective_freq_count;
-extern uint32_t effective_freq_count_DualBand;
-
-// Geometry hashes, one per band mode, recomputed at each sequence build.
-// 0 = no subset effective for that mode, so a subset-free build hashes to
-// nothing and seeds its packet CRC exactly as an unmodified build does.
-extern uint16_t FHSSgeometryHashPrimary;
 
 #if defined(FHSS_HAS_DUAL_BAND)
 extern bool FHSSsubsetActive_DualBand;
 extern uint_fast8_t subset_offset_DualBand;
-extern uint16_t FHSSgeometryHashSecondary;
-extern uint16_t FHSSgeometryHashDual;
+extern uint32_t effective_freq_count_DualBand;
 #else
 // a single band radio never restricts the band it does not have
 static constexpr bool FHSSsubsetActive_DualBand = false;
 static constexpr uint_fast8_t subset_offset_DualBand = 0;
+static constexpr uint32_t effective_freq_count_DualBand = 0;
 #endif
 
 // Whether the last build left any band running a subset, whatever the mode
@@ -102,8 +125,7 @@ extern char version_domain[];
 // Create and randomise the FHSS sequence(s). useSubset requests the
 // options-defined channel subset(s); each band falls back to its full domain
 // independently if its subset is absent or does not fit. Binding and full-band
-// acquisition call with useSubset=false, which has no default so that it is
-// always stated.
+// acquisition call with useSubset=false.
 void FHSSrandomiseFHSSsequence(uint32_t seed, bool useSubset);
 // build one band's sequence from freqCount alone and return the number of
 // entries written, always a whole multiple of freqCount
@@ -113,6 +135,13 @@ uint16_t FHSSrandomiseFHSSsequenceBuild(uint32_t seed, uint32_t freqCount, uint_
 void addDomainInfo(char *version_domain, uint8_t maxlen);
 
 #if defined(USE_FHSS_SUBSET)
+// The hash of the effective geometry of the band(s) the active mode transmits
+// on. 0 = no subset effective for that mode, so a subset-free build hashes to
+// nothing and seeds its packet CRC exactly as an unmodified build does. Valid
+// only after a sequence build, and it follows the band mode, so re-read it
+// rather than holding it across either.
+uint16_t FHSSgetGeometryHash(void);
+
 // Whether a subset is defined in options for a band this radio has, valid or not
 bool FHSSsubsetConfigured(void);
 
@@ -121,19 +150,42 @@ bool FHSSsubsetConfigured(void);
 // acquisition scan can settle its phase before building
 bool FHSSsubsetWouldApply(void);
 
-// The configured subsets, sub-GHz start/count then 2.4GHz start/count, for the
-// receiver's own read-only readout of what it is holding
-void FHSSgetOptionSubsets(uint8_t out[4]);
+// Editing the definition, for the handset parameter layers on both sides. A band
+// this radio does not have reports no channels and refuses every write.
+uint32_t FHSSsubsetBandChannels(fhss_band_e band);
 
-// Render those four bytes as "start+count" per band, sub-GHz first, joined with
-// '/' ("5+24/10+17"). Bands with a count of zero are skipped; returns false if
-// that left nothing, so the caller picks its own wording for none.
-#define FHSS_SUBSET_STR_LEN 14      // "241+15/241+15" plus the terminator
-bool FHSSformatSubsets(char *dst, uint8_t maxlen, const uint8_t subsets[4]);
+// A band's frequency grid for the layers that show it to a human: the centre
+// frequency of channel 0 and the spacing between channels, both in kHz. The
+// FHSS tables hold freq_start/freq_stop in register units on every radio except
+// the LR1121, so this is the one place that conversion happens. False for a
+// band this radio does not have. Channel n is startKhz + n * stepKhz; use that
+// expression rather than re-deriving, so the value shown and the value written
+// back come from the same arithmetic.
+bool FHSSsubsetBandAxis(fhss_band_e band, uint32_t *startKhz, uint32_t *stepKhz);
 
+// The inverse of that expression, for turning an edited frequency back into a
+// channel. The handset sends min + n * step except at the top, where incrField()
+// clamps to max instead of landing on a step boundary, so this rounds rather
+// than truncates. Out of range below the band is channel 0, above it the last.
+uint8_t FHSSsubsetChannelForKhz(fhss_band_e band, uint32_t khz);
+
+void FHSSgetBandSubset(fhss_band_e band, uint8_t *start, uint8_t *count);
+
+// Validate against that band's live domain and store it. Returns false and
+// changes nothing if the pair does not fit; the caller persists on true.
+bool FHSSsetBandSubset(fhss_band_e band, uint8_t start, uint8_t count);
+
+// What a start/count pair resolves to on a band, for a read-only display field:
+// the channel span, or why there is not one. The pair is explicit rather than
+// read from options, so a caller can describe one that was never stored - which
+// is how a value the firmware would not keep explains itself. Kept under ten
+// characters because it is drawn at COL2, 58px from the edge of a 128px handset.
+#define FHSS_SUBSET_HINT_LEN 12     // "241-255/255" plus the terminator
+void FHSSdescribeSubset(fhss_band_e band, uint8_t start, uint8_t count, char *dst, uint8_t maxlen);
 #else
 static inline bool FHSSsubsetConfigured(void) { return false; }
 static inline bool FHSSsubsetWouldApply(void) { return false; }
+static inline uint16_t FHSSgetGeometryHash(void) { return 0; }
 #endif
 
 // Raw domain bounds, the radio tuning range passed to Radio.Begin(); never
@@ -166,23 +218,6 @@ static inline uint32_t FHSSgetChannelCount(void)
     return FHSSusePrimaryFreqBand ? effective_freq_count : effective_freq_count_DualBand;
 #else
     return FHSSusePrimaryFreqBand ? FHSSconfig->freq_count : FHSSconfigDualBand->freq_count;
-#endif
-}
-
-// The hash of the band(s) the active mode transmits on, precomputed at build
-static inline uint16_t FHSSgetGeometryHash(void)
-{
-#if defined(USE_FHSS_SUBSET) && defined(FHSS_HAS_DUAL_BAND)
-    if (FHSSuseDualBand)
-    {
-        return FHSSgeometryHashDual;
-    }
-    return FHSSusePrimaryFreqBand ? FHSSgeometryHashPrimary : FHSSgeometryHashSecondary;
-#elif defined(USE_FHSS_SUBSET)
-    // a single-band build never leaves the primary table
-    return FHSSgeometryHashPrimary;
-#else
-    return 0;
 #endif
 }
 

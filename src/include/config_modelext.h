@@ -9,8 +9,11 @@
 // An absent key loads as raw 0: schema 0, all features off.
 
 // The record lives in NVS, so it needs an ESP32 TX, and its only field today is
-// the band subset. Downgrade-safe per-model additions go here; anything else
-// bumps TX_CONFIG_VERSION.
+// the band subset - hence the feature flag in the condition, so a build without
+// the subset carries neither the storage nor the Lua toggle. Downgrade-safe
+// per-model additions go here; anything else bumps TX_CONFIG_VERSION. A second
+// tenant splits this in two: PLATFORM_ESP32 alone for the record, and a
+// per-feature symbol for each tenant's parameters.
 #if defined(PLATFORM_ESP32) && defined(USE_FHSS_SUBSET)
 #define HAS_MODEL_EXTRAS
 #endif

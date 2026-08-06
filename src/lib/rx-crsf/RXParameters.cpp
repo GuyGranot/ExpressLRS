@@ -30,11 +30,6 @@ char strPowerLevels[] = "10;25;50;100;250;500;1000;2000;MatchTX ";
 char strPowerLevels[] = "10;25;50;100;250;500;1000;2000;MatchTX ";
 #endif
 static char modelString[] = "000";
-#if defined(USE_FHSS_SUBSET)
-// options.json band-subset definition, for handset visibility ("Off" or
-// "start+count" per configured band, sub-GHz first, e.g. "5+24/10+17")
-static char bandSubsetString[FHSS_SUBSET_STR_LEN];
-#endif
 static char pwmModes[] = "50Hz;60Hz;100Hz;160Hz;333Hz;400Hz;10kHzDuty;On/Off;DShot;DShot 3D;Serial RX;Serial TX;I2C SCL;I2C SDA;Serial2 RX;Serial2 TX";
 
 static selectionParameter luaSerialProtocol = {
@@ -129,13 +124,6 @@ static stringParameter luaModelNumber = {
     modelString
 };
 
-#if defined(USE_FHSS_SUBSET)
-static stringParameter luaBandSubsetInfo = {
-    {"Band Subset", CRSF_INFO},
-    bandSubsetString
-};
-#endif
-
 static stringParameter luaELRSversion = {
     {version_domain, CRSF_INFO},
     commit
@@ -188,7 +176,7 @@ static selectionParameter luaMappingOutputMode = {
 static selectionParameter luaMappingInverted = {
     {"Invert", CRSF_TEXT_SELECTION},
     0, // value
-    "Off;On",
+    STR_OFF_ON,
     STR_EMPTYSPACE
 };
 
@@ -619,15 +607,10 @@ void RXEndpoint::registerParameters()
   registerParameter(&luaModelNumber);
 
 #if defined(USE_FHSS_SUBSET)
-  // The subset definition is boot-constant (options.json), so build the
-  // display string once
-  uint8_t subsets[4];
-  FHSSgetOptionSubsets(subsets);
-  if (!FHSSformatSubsets(bandSubsetString, sizeof(bandSubsetString), subsets))
-  {
-    strcpy(bandSubsetString, "Off");
-  }
-  registerParameter(&luaBandSubsetInfo);
+  // Nothing receiver-side goes inside the folder: the request is the
+  // transmitter's per-model toggle, and this end only holds the definition
+  registerBandSubsetFolder();
+  registerBandSubsetFields();
 #endif
 
   registerParameter(&luaELRSversion);
@@ -706,5 +689,9 @@ void RXEndpoint::updateParameters()
     LUA_FIELD_HIDE(luaSourceSysId)
     LUA_FIELD_HIDE(luaTargetSysId)
   }
+
+#if defined(USE_FHSS_SUBSET)
+  updateBandSubsetParameters();
+#endif
 }
 #endif

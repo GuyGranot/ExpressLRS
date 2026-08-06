@@ -73,6 +73,9 @@ public:
 };
 
 // --- Test Globals ---
+// CRSFEndpoint sends through the global router; the routing tests below drive
+// their own instance instead, so this only has to exist to link.
+CRSFRouter crsfRouter;
 static CRSFRouter *router;
 static MockEndpoint *testEndpoint = nullptr;
 static MockConnector *connector1 = nullptr;
@@ -271,6 +274,57 @@ void test_ProcessMessage_SimpleFrame_AddressedToOther_KnownConnector()
     TEST_ASSERT_TRUE(connector3->forwardMessageCalled);
 }
 
+// --- Parameter write decoding ---
+// A parameter's declared type decides how many bytes of the write payload are
+// its value. Exposes the two protected entry points; no router involved,
+// because a PARAMETER_WRITE only runs the callback.
+class ParamEndpoint final : public CRSFEndpoint
+{
+public:
+    ParamEndpoint() : CRSFEndpoint(CRSF_ADDRESS_CRSF_TRANSMITTER) {}
+    void handleMessage(const crsf_header_t *message) override {}
+    using CRSFEndpoint::parameterUpdateReq;
+    using CRSFEndpoint::registerParameter;
+};
+
+static int32_t lastFloatArg;
+static int32_t lastByteArg;
+
+void test_ParameterWrite_DecodesWidthFromType()
+{
+    ParamEndpoint endpoint;
+    static floatParameter freq = {{"Freq", CRSF_FLOAT}, {0, 0, 0, 0, 3, 0}, STR_EMPTYSPACE};
+    static int8Parameter small = {{"Small", CRSF_UINT8}, {{(uint8_t)0, (uint8_t)0, (uint8_t)255}}, STR_EMPTYSPACE};
+    lastFloatArg = 0;
+    lastByteArg = 0;
+    endpoint.registerParameter(&freq, [](propertiesCommon *item, int32_t arg) { lastFloatArg = arg; });
+    endpoint.registerParameter(&small, [](propertiesCommon *item, int32_t arg) { lastByteArg = arg; });
+
+    // 2473256, the top of the 2.4GHz band in kHz, big-endian
+    uint8_t payload[4] = {0x00, 0x25, 0xBD, 0x28};
+    endpoint.parameterUpdateReq(CRSF_ADDRESS_RADIO_TRANSMITTER, CRSF_FRAMETYPE_PARAMETER_WRITE, freq.common.id, payload);
+    TEST_ASSERT_EQUAL_INT32(2473256, lastFloatArg);
+
+    // the same payload against a byte-wide parameter is one byte
+    endpoint.parameterUpdateReq(CRSF_ADDRESS_RADIO_TRANSMITTER, CRSF_FRAMETYPE_PARAMETER_WRITE, small.common.id, payload);
+    TEST_ASSERT_EQUAL_INT32(0x00, lastByteArg);
+}
+
+void test_ParameterWrite_HiddenFieldKeepsItsWidth()
+{
+    // The hidden flag rides along in `type`; deciding the width without masking
+    // it off would read one byte of a four byte value.
+    ParamEndpoint endpoint;
+    static floatParameter freq = {{"Freq", CRSF_FLOAT}, {0, 0, 0, 0, 3, 0}, STR_EMPTYSPACE};
+    lastFloatArg = 0;
+    endpoint.registerParameter(&freq, [](propertiesCommon *item, int32_t arg) { lastFloatArg = arg; });
+    LUA_FIELD_HIDE(freq)
+
+    uint8_t payload[4] = {0x00, 0x25, 0xBD, 0x28};
+    endpoint.parameterUpdateReq(CRSF_ADDRESS_RADIO_TRANSMITTER, CRSF_FRAMETYPE_PARAMETER_WRITE, freq.common.id, payload);
+    TEST_ASSERT_EQUAL_INT32(2473256, lastFloatArg);
+}
+
 // --- Test Runner ---
 int main()
 {
@@ -284,5 +338,7 @@ int main()
     RUN_TEST(test_ProcessMessage_Broadcast_FromConnector2);
     RUN_TEST(test_ProcessMessage_ExtendedFrameFromConnector_CallsAddDevice);
     RUN_TEST(test_ProcessMessage_SimpleFrame_AddressedToOther_KnownConnector);
+    RUN_TEST(test_ParameterWrite_DecodesWidthFromType);
+    RUN_TEST(test_ParameterWrite_HiddenFieldKeepsItsWidth);
     return UNITY_END();
 }

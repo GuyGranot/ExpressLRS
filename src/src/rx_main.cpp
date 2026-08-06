@@ -189,7 +189,8 @@ uint32_t RFmodeLastCycled = 0;
 uint8_t RFmodeCycleMultiplier;
 bool LockRFmode = false;
 // While disconnected, each rate is scanned in full-band mode and then again in
-// subset mode (when the rate's band(s) have an effective subset configured)
+// subset mode (when the rate's band(s) have an effective subset configured).
+// Its own flag rather than a second dimension of scanIndex; cycleRfMode() says why.
 static bool scanInSubsetMode = false;
 ///////////////////////////////////////
 
@@ -1643,8 +1644,18 @@ static void cycleRfMode(unsigned long now)
         // Each rate is dwelt on in full-band geometry and then, before the scan
         // advances, once more in subset geometry. Rebuilds happen only here, in
         // main-loop disconnected context.
-        // a subset that does not apply to this rate's band mode falls straight
-        // through to the next rate
+        //
+        // The phase deliberately does not fold into scanIndex as a second
+        // dimension (rate = scanIndex / 2, subset = scanIndex % 2). How many
+        // phases a rate has depends on the rate: the subset is judged under the
+        // band mode of the rate it would dwell on, so a sub-GHz-only subset
+        // gives the dual-band rates two phases and the 2.4GHz-only rates one. A
+        // fixed modulus would dwell twice on identical geometry for every rate
+        // in the second group and double the worst case time to link. A subset
+        // that does not apply falls straight through to the next rate on the
+        // full-band build that dwell needs; the retry comes on the following
+        // cycle, judged under that rate's own band mode, so no rate with a
+        // subset dwell coming misses it.
         if (FHSSsubsetConfigured())
         {
             scanInSubsetMode = !scanInSubsetMode && FHSSsubsetWouldApply();
@@ -1680,7 +1691,9 @@ static void cycleRfMode(unsigned long now)
 
 // Restart the acquisition scan from its full-band phase. The scan phase and the
 // geometry actually built have to move together, or the receiver dwells as though
-// it were on the subset while hopping the full band.
+// it were on the subset while hopping the full band. Both, not either: this is
+// why the phase is its own variable rather than a bit of scanIndex, which is the
+// change the shape of this code invites (see cycleRfMode above).
 static void RestartFullBandAcquisition()
 {
     scanInSubsetMode = false;
@@ -1971,11 +1984,21 @@ static void updateSwitchMode()
 
 static void CheckConfigChangePending()
 {
-    if (config.IsModified() && !InBindingMode && connectionState < NO_CONFIG_SAVE_STATES)
+    // Options saves share the config commits' protected window: on a
+    // single-core chip the flash write suspends the scheduler, and the tock
+    // ISR's RC-frame serial write during that window is a FreeRTOS assert and
+    // a reboot that loses the edit. LostConnection() first stops the timer, so
+    // the deliberate cost is the same short re-acquisition every config commit
+    // already pays.
+    if ((config.IsModified() || optionsSavePending()) && !InBindingMode && connectionState < NO_CONFIG_SAVE_STATES)
     {
         LostConnection(false);
-        uint32_t changes = config.Commit();
-        devicesTriggerEvent(changes);
+        saveOptionsIfPending();
+        if (config.IsModified())
+        {
+            uint32_t changes = config.Commit();
+            devicesTriggerEvent(changes);
+        }
         LbtEnableIfRequired();
         Radio.RXnb();
     }

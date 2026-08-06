@@ -175,8 +175,9 @@ TxConfig::TxConfig() :
 #if defined(PLATFORM_ESP32)
 static void modelKey(char *buf, const char *prefix, unsigned modelId)
 {
-    strcpy(buf, prefix);
-    itoa(modelId, buf + strlen(prefix), 10);
+    // stpcpy leaves the cursor at the terminator, so this is one pass over the
+    // prefix; Load() builds one key per model and does not want two.
+    itoa(modelId, stpcpy(buf, prefix), 10);
 }
 
 void TxConfig::Load()

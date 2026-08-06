@@ -11,6 +11,7 @@
 #include "helpers.h"
 #include "deferred.h"
 #include "msptypes.h"
+#include "options.h"
 
 #define STR_LUA_ALLAUX         "AUX1;AUX2;AUX3;AUX4;AUX5;AUX6;AUX7;AUX8;AUX9;AUX10"
 
@@ -69,7 +70,6 @@ static constexpr char luastrDvrAux[] = "Off;" STR_LUA_ALLAUX_UPDOWN;
 static constexpr char luastrDvrDelay[] = "0s;5s;15s;30s;45s;1min;2min";
 static constexpr char luastrHeadTrackingEnable[] = "Off;On;" STR_LUA_ALLAUX_UPDOWN;
 static constexpr char luastrHeadTrackingStart[] = "EdgeTX;" STR_LUA_ALLAUX;
-static constexpr char luastrOffOn[] = "Off;On";
 static char luastrPacketRates[] = STR_LUA_PACKETRATES;
 
 #if defined(RADIO_LR1121)
@@ -161,17 +161,16 @@ static selectionParameter luaLinkMode = {
 static selectionParameter luaModelMatch = {
     {"Model Match", CRSF_TEXT_SELECTION},
     0, // value
-    luastrOffOn,
+    STR_OFF_ON,
     modelMatchUnit
 };
 
 #if defined(HAS_MODEL_EXTRAS)
-static char bandSubsetUnit[sizeof(" (full band)")] = "";
 static selectionParameter luaBandSubset = {
     {"Band Subset", CRSF_TEXT_SELECTION},
     0, // value
-    luastrOffOn,
-    bandSubsetUnit
+    STR_OFF_ON,
+    STR_EMPTYSPACE
 };
 #endif
 
@@ -273,7 +272,7 @@ static folderParameter luaBackpackFolder = {
 static selectionParameter luaBackpackEnable = {
     {"Backpack", CRSF_TEXT_SELECTION},
     0, // value
-    luastrOffOn,
+    STR_OFF_ON,
     STR_EMPTYSPACE};
 
 static selectionParameter luaDvrAux = {
@@ -405,13 +404,14 @@ void TXModuleEndpoint::updateModelID() {
 /**
  * The toggle is a request, not a report: the definition it asks for may not fit
  * this radio's domain, in which case the build falls back to full band. Saying
- * so keeps "On" honest, and it is a fact about this device alone.
+ * so is a fact about this device and needs nothing from the receiver - the far
+ * end's definition is a per-device setting like the bind phrase, read from its
+ * own Subset Bands folder, and a disagreement is self-enforcing because the
+ * geometries seed different packet CRCs and the link never forms.
  */
-void TXModuleEndpoint::updateBandSubsetUnit()
+static void updateBandSubsetUnit()
 {
-  strlcpy(bandSubsetUnit,
-          (config.GetBandSubset() && !FHSSanySubsetActive()) ? " (full band)" : "",
-          sizeof(bandSubsetUnit));
+  luaBandSubset.units = (config.GetBandSubset() && !FHSSanySubsetActive()) ? " (full band)" : STR_EMPTYSPACE;
 }
 #endif
 
@@ -758,6 +758,9 @@ void TXModuleEndpoint::updateFolderNamesAndVisibility()
   updateTlmBandwidth();
   updateBackpackOpts();
   updateVtxAdminOpts();
+#if defined(HAS_MODEL_EXTRAS)
+  updateBandSubsetParameters();
+#endif
 }
 
 static void recalculatePacketRateOptions(int minInterval)
@@ -882,13 +885,8 @@ void TXModuleEndpoint::registerParameters()
         config.SetModelMatch(newModelMatch);
         if (connectionState == connected)
         {
-          mspPacket_t msp;
-          msp.reset();
-          msp.makeCommand();
-          msp.function = MSP_ELRS_RXTX_CONFIG;
-          msp.addByte((uint8_t)MSP_ELRS_RXTX_CONFIG_SUBCMD::MODEL_ID);
-          msp.addByte(newModelMatch ? modelId : 0xff);
-          crsfRouter.AddMspMessage(&msp, CRSF_ADDRESS_CRSF_RECEIVER, CRSF_ADDRESS_CRSF_TRANSMITTER);
+          const uint8_t id = newModelMatch ? modelId : 0xff;
+          sendRxTxConfig(false, MSP_ELRS_RXTX_CONFIG_SUBCMD::MODEL_ID, &id, 1, CRSF_ADDRESS_CRSF_RECEIVER);
         }
         updateModelID();
       });
@@ -897,11 +895,21 @@ void TXModuleEndpoint::registerParameters()
 #if defined(HAS_MODEL_EXTRAS)
     // Per-model band-subset toggle; takes effect through the config-commit ->
     // ChangeRadioParams path like a rate change (the link drops and
-    // re-establishes in the new geometry)
+    // re-establishes in the new geometry).
+    //
+    // It lives inside the folder, first, because it hides and reveals the fields
+    // below it. reloadRelatedFields() re-reads the edited field's parent folder
+    // and its same-parent siblings only, so a toggle at the root would flip a
+    // visibility the handset never re-reads - the on-air lock would appear and
+    // clear only after a script reload. Being in the folder also means the
+    // folder's own name refreshes, which is what says why the fields went away.
+    const uint8_t bandSubsetFolderId = registerBandSubsetFolder();
     registerParameter(&luaBandSubset, [this](propertiesCommon *item, uint8_t arg) {
       config.SetBandSubset(arg);
       updateBandSubsetUnit();
-    });
+    }, bandSubsetFolderId);
+
+    registerBandSubsetFields();
 #endif
 
     // POWER folder

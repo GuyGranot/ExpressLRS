@@ -57,9 +57,6 @@ private:
     void updateTlmBandwidth();
     void updateBackpackOpts();
     void updateVtxAdminOpts();
-#if defined(HAS_MODEL_EXTRAS)
-    void updateBandSubsetUnit();
-#endif
 };
 
 extern TXModuleEndpoint crsfTransmitter;

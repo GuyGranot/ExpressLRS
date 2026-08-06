@@ -8,6 +8,10 @@
 // "fhss-subset-2g4-*". Which FHSS domain table carries which band is a
 // radio-family detail, resolved once in FHSSrandomiseFHSSsequence().
 
+// The two physical bands a subset can restrict, and the order the four
+// configured bytes are packed in
+enum fhss_band_e { FHSS_BAND_SUBGHZ = 0, FHSS_BAND_2G4 = 1 };
+
 // EN 300 328 requires >= 15 hopping channels for FHSS equipment in 2.4GHz
 #ifndef FHSS_SUBSET_MIN
 #define FHSS_SUBSET_MIN 15

@@ -146,6 +146,17 @@ uint8_t *CRSFEndpoint::int16ParameterToArray(const int16Parameter *parameter, ui
     return (uint8_t *)stpcpy((char *)next, parameter->units);
 }
 
+/**
+ * Unlike the integer parameters, the default value is inside the properties
+ * (with the precision and step that follow it), so nothing is appended here.
+ */
+uint8_t *CRSFEndpoint::floatParameterToArray(const floatParameter *parameter, uint8_t *next)
+{
+    memcpy(next, &parameter->properties, sizeof(parameter->properties));
+    next += sizeof(parameter->properties);
+    return (uint8_t *)stpcpy((char *)next, parameter->units);
+}
+
 uint8_t *CRSFEndpoint::stringParameterToArray(const stringParameter *parameter, uint8_t *next)
 {
     return (uint8_t *)stpcpy((char *)next, parameter->value);
@@ -213,6 +224,9 @@ uint8_t CRSFEndpoint::sendParameter(const crsf_addr_e origin, const crsf_frame_t
     case CRSF_UINT16:
         dataEnd = int16ParameterToArray((int16Parameter *)parameter, chunkStart);
         break;
+    case CRSF_FLOAT:
+        dataEnd = floatParameterToArray((floatParameter *)parameter, chunkStart);
+        break;
     case CRSF_STRING: // fallthrough
     case CRSF_INFO:
         dataEnd = stringParameterToArray((stringParameter *)parameter, chunkStart);
@@ -222,7 +236,6 @@ uint8_t CRSFEndpoint::sendParameter(const crsf_addr_e origin, const crsf_frame_t
         // to return the fixed name or dynamic name.
         dataEnd = folderParameterToArray((folderParameter *)parameter, &chunkBuffer[4]);
         break;
-    case CRSF_FLOAT:
     case CRSF_OUT_OF_RANGE:
     default:
         return 0;
@@ -304,23 +317,28 @@ void CRSFEndpoint::parameterUpdateReq(const crsf_addr_e origin, const uint8_t pa
         {
             uint8_t *argBytes = (uint8_t*)payload;
             int32_t arg = 0;
-            switch (parameter->type)
+            // the hidden flag rides along in `type`, and a field can be written
+            // while hidden, so decide the width on the type alone
+            const uint8_t dataType = parameter->type & CRSF_FIELD_TYPE_MASK;
+            switch (dataType)
             {
                 case CRSF_UINT32:
                 case CRSF_INT32:
+                // a float is a scaled integer on the wire, four bytes like an int32
+                case CRSF_FLOAT:
                     arg = (argBytes[0] << 24) | (argBytes[1] << 16) | (argBytes[2] << 8) | argBytes[3];
-                    if (parameter->type == CRSF_INT32) arg = (int32_t)arg;
+                    if (dataType == CRSF_INT32) arg = (int32_t)arg;
                     break;
                 case CRSF_UINT16:
                 case CRSF_INT16:
                     arg = (argBytes[0] << 8) | argBytes[1];
-                    if (parameter->type == CRSF_INT16) arg = (int16_t)arg;
+                    if (dataType == CRSF_INT16) arg = (int16_t)arg;
                     break;
                 case CRSF_UINT8:
                 case CRSF_INT8:
                 default:
                     arg = argBytes[0];
-                    if (parameter->type == CRSF_INT8) arg = (int8_t)arg;
+                    if (dataType == CRSF_INT8) arg = (int8_t)arg;
                     break;
             }
             DBGLN("Set parameter [%s]=%u", parameter->name, arg);

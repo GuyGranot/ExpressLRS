@@ -5,6 +5,7 @@
 #include <FHSS.h>
 #include <OTA.h>
 #include <fhss_subset.h>
+#include <helpers.h>
 #include <options.h>
 #include <unity.h>
 
@@ -37,10 +38,8 @@ static uint32_t rawFreq(const fhss_config_t *config, uint32_t spread, uint32_t c
 static void setSubsets(uint8_t primaryStart, uint8_t primaryCount,
                        uint8_t secondaryStart, uint8_t secondaryCount)
 {
-    firmwareOptions.fhss_subset_2g4_start = primaryStart;
-    firmwareOptions.fhss_subset_2g4_count = primaryCount;
-    firmwareOptions.fhss_subset_subghz_start = secondaryStart;
-    firmwareOptions.fhss_subset_subghz_count = secondaryCount;
+    firmwareOptions.fhss_subset[FHSS_BAND_2G4] = {primaryStart, primaryCount};
+    firmwareOptions.fhss_subset[FHSS_BAND_SUBGHZ] = {secondaryStart, secondaryCount};
 }
 
 // Entries in range + sync channel at every block start, over the band's OWN
@@ -261,7 +260,7 @@ void test_dualband_coprime_combinations(void)
         { 3, 19, 0,  0},    // 247 vs full-band 240: seam on the primary, secondary disabled
         { 2, 23, 1, 37},    // 253 vs 222: the shared window cuts both bands' blocks
     };
-    for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
+    for (unsigned i = 0; i < ARRAY_SIZE(cases); i++)
     {
         checkDualBand(cases[i][0], cases[i][1], cases[i][2], cases[i][3]);
     }
@@ -322,6 +321,22 @@ void test_poison_rebuild_while_dualband_mode_active(void)
 
 // --- geometry hash and the packet CRC seed ---
 
+// The hash one band mode would see, without leaving that mode selected
+static uint16_t hashInMode(bool usePrimary, bool useDual)
+{
+    const bool wasPrimary = FHSSusePrimaryFreqBand;
+    const bool wasDual = FHSSuseDualBand;
+    FHSSusePrimaryFreqBand = usePrimary;
+    FHSSuseDualBand = useDual;
+    const uint16_t hash = FHSSgetGeometryHash();
+    FHSSusePrimaryFreqBand = wasPrimary;
+    FHSSuseDualBand = wasDual;
+    return hash;
+}
+static uint16_t hashPrimary(void)   { return hashInMode(true, false); }
+static uint16_t hashSecondary(void) { return hashInMode(false, false); }
+static uint16_t hashDual(void)      { return hashInMode(true, true); }
+
 // Seed the CRC the way SetRFLinkRate() does, and return the initializer
 static uint16_t crcSeedFor(uint8_t start, uint8_t count, bool useSubset)
 {
@@ -350,12 +365,9 @@ void test_geometry_hash_zero_without_subset(void)
 {
     // in every band mode there is nothing to fold into the seed
     FHSSrandomiseFHSSsequence(SEED, false);
-    TEST_ASSERT_EQUAL_UINT16(0, FHSSgetGeometryHash());
-    FHSSuseDualBand = true;
-    TEST_ASSERT_EQUAL_UINT16(0, FHSSgetGeometryHash());
-    FHSSuseDualBand = false;
-    FHSSusePrimaryFreqBand = false;
-    TEST_ASSERT_EQUAL_UINT16(0, FHSSgetGeometryHash());
+    TEST_ASSERT_EQUAL_UINT16(0, hashPrimary());
+    TEST_ASSERT_EQUAL_UINT16(0, hashSecondary());
+    TEST_ASSERT_EQUAL_UINT16(0, hashDual());
 }
 
 void test_crc_seed_unchanged_without_subset(void)
@@ -428,22 +440,14 @@ void test_geometry_hash_mode_selection(void)
     setSubsets(10, 17, 5, 24);
     FHSSrandomiseFHSSsequence(SEED, true);
 
-    // all three mode hashes active, and the accessor selects by band mode
-    TEST_ASSERT_NOT_EQUAL_UINT16(0, FHSSgeometryHashPrimary);
-    TEST_ASSERT_NOT_EQUAL_UINT16(0, FHSSgeometryHashSecondary);
-    TEST_ASSERT_NOT_EQUAL_UINT16(0, FHSSgeometryHashDual);
-
-    TEST_ASSERT_EQUAL_UINT16(FHSSgeometryHashPrimary, FHSSgetGeometryHash());
-    FHSSusePrimaryFreqBand = false;
-    TEST_ASSERT_EQUAL_UINT16(FHSSgeometryHashSecondary, FHSSgetGeometryHash());
-    FHSSusePrimaryFreqBand = true;
-    FHSSuseDualBand = true;
-    TEST_ASSERT_EQUAL_UINT16(FHSSgeometryHashDual, FHSSgetGeometryHash());
-    FHSSuseDualBand = false;
+    // every band mode hashes to something, and the accessor follows the mode
+    TEST_ASSERT_NOT_EQUAL_UINT16(0, hashPrimary());
+    TEST_ASSERT_NOT_EQUAL_UINT16(0, hashSecondary());
+    TEST_ASSERT_NOT_EQUAL_UINT16(0, hashDual());
 
     // mode hashes describe different geometry sets, so they must differ
-    TEST_ASSERT_NOT_EQUAL(FHSSgeometryHashPrimary, FHSSgeometryHashDual);
-    TEST_ASSERT_NOT_EQUAL(FHSSgeometryHashSecondary, FHSSgeometryHashDual);
+    TEST_ASSERT_NOT_EQUAL(hashPrimary(), hashDual());
+    TEST_ASSERT_NOT_EQUAL(hashSecondary(), hashDual());
 }
 
 void test_geometry_hash_depends_only_on_effective_geometry(void)
@@ -455,12 +459,12 @@ void test_geometry_hash_depends_only_on_effective_geometry(void)
     // geometry, not on which domain table the band happened to come from.
     setSubsets(10, 17, 10, 17);
     FHSSrandomiseFHSSsequence(SEED, true);
-    TEST_ASSERT_EQUAL_UINT16(FHSSgeometryHashPrimary, FHSSgeometryHashSecondary);
+    TEST_ASSERT_EQUAL_UINT16(hashPrimary(), hashSecondary());
 
     // and differing subsets still separate them
     setSubsets(10, 17, 11, 17);
     FHSSrandomiseFHSSsequence(SEED, true);
-    TEST_ASSERT_NOT_EQUAL(FHSSgeometryHashPrimary, FHSSgeometryHashSecondary);
+    TEST_ASSERT_NOT_EQUAL(hashPrimary(), hashSecondary());
 }
 
 void test_geometry_hash_full_band_subset_is_discriminated(void)
@@ -469,7 +473,7 @@ void test_geometry_hash_full_band_subset_is_discriminated(void)
     // full-band, but the hash must still discriminate the two modes
     setSubsets(0, 80, 0, 0);
     FHSSrandomiseFHSSsequence(SEED, true);
-    TEST_ASSERT_NOT_EQUAL_UINT16(0, FHSSgeometryHashPrimary);
+    TEST_ASSERT_NOT_EQUAL_UINT16(0, hashPrimary());
 }
 
 void test_geometry_hash_ignores_a_band_the_mode_does_not_use(void)
@@ -536,6 +540,153 @@ void test_subset_structural_bound(void)
     TEST_ASSERT_FALSE(FHSSsubsetIsValid(200, 56, FHSS_SUBSET_MAX_CHANNELS));
 }
 
+// The handset editing path: the parameter layers on both sides go through these
+// rather than reaching into firmwareOptions themselves
+void test_band_channels_per_domain(void)
+{
+    FHSSrandomiseFHSSsequence(SEED, false);
+    TEST_ASSERT_EQUAL_UINT32(80, FHSSsubsetBandChannels(FHSS_BAND_2G4));
+    TEST_ASSERT_EQUAL_UINT32(40, FHSSsubsetBandChannels(FHSS_BAND_SUBGHZ));
+}
+
+void test_set_band_subset_refuses_what_does_not_fit(void)
+{
+    FHSSrandomiseFHSSsequence(SEED, false);
+    uint8_t start, count;
+
+    TEST_ASSERT_TRUE(FHSSsetBandSubset(FHSS_BAND_2G4, 10, 17));
+    FHSSgetBandSubset(FHSS_BAND_2G4, &start, &count);
+    TEST_ASSERT_EQUAL_UINT8(10, start);
+    TEST_ASSERT_EQUAL_UINT8(17, count);
+
+    // below the regulatory floor, and past the end of the domain
+    TEST_ASSERT_FALSE(FHSSsetBandSubset(FHSS_BAND_2G4, 10, FHSS_SUBSET_MIN - 1));
+    TEST_ASSERT_FALSE(FHSSsetBandSubset(FHSS_BAND_2G4, 70, 20));
+
+    // a refused write leaves the stored pair untouched
+    FHSSgetBandSubset(FHSS_BAND_2G4, &start, &count);
+    TEST_ASSERT_EQUAL_UINT8(10, start);
+    TEST_ASSERT_EQUAL_UINT8(17, count);
+
+    // disabling is always valid, and drops the start with it
+    TEST_ASSERT_TRUE(FHSSsetBandSubset(FHSS_BAND_2G4, 10, 0));
+    FHSSgetBandSubset(FHSS_BAND_2G4, &start, &count);
+    TEST_ASSERT_EQUAL_UINT8(0, start);
+    TEST_ASSERT_EQUAL_UINT8(0, count);
+}
+
+// What the parameter layer renders for the pair a band currently holds
+static void describeStored(fhss_band_e band, char *dst, uint8_t maxlen)
+{
+    uint8_t start, count;
+    FHSSgetBandSubset(band, &start, &count);
+    FHSSdescribeSubset(band, start, count, dst, maxlen);
+}
+
+void test_describe_band_subset(void)
+{
+    FHSSrandomiseFHSSsequence(SEED, false);
+    char hint[FHSS_SUBSET_HINT_LEN];
+
+    setSubsets(0, 0, 0, 0);
+    describeStored(FHSS_BAND_2G4, hint, sizeof(hint));
+    TEST_ASSERT_EQUAL_STRING("full band", hint);
+
+    setSubsets(10, 17, 0, 0);
+    describeStored(FHSS_BAND_2G4, hint, sizeof(hint));
+    TEST_ASSERT_EQUAL_STRING("10-26/80", hint);
+
+    // A pair baked into options.json clears the parser's structural bound of 255
+    // but not the real domain, which is the one bad stored pair describe sees.
+    setSubsets(70, 20, 0, 0);
+    describeStored(FHSS_BAND_2G4, hint, sizeof(hint));
+    TEST_ASSERT_EQUAL_STRING("past 79", hint);
+}
+
+// Every line has to fit the value column of a 128px handset, which is about
+// nine characters; the frequencies are on the editable fields, not here
+void test_describe_subset_fits_the_display(void)
+{
+    FHSSrandomiseFHSSsequence(SEED, false);
+    char hint[FHSS_SUBSET_HINT_LEN];
+
+    const uint8_t pairs[][2] = {{0, 0}, {10, 17}, {70, 20}, {10, 1}, {0, 80}, {65, 15}};
+    for (auto &pair : pairs)
+    {
+        FHSSdescribeSubset(FHSS_BAND_2G4, pair[0], pair[1], hint, sizeof(hint));
+        TEST_ASSERT_LESS_OR_EQUAL_UINT(10, strlen(hint));
+    }
+}
+
+void test_describe_subset_explains_a_pair_that_was_never_stored(void)
+{
+    // What a refused write shows: nothing reached storage, so the reason has to
+    // come from describing the offered pair rather than the stored one.
+    FHSSrandomiseFHSSsequence(SEED, false);
+    char hint[FHSS_SUBSET_HINT_LEN];
+    setSubsets(10, 17, 0, 0);
+
+    FHSSdescribeSubset(FHSS_BAND_2G4, 10, FHSS_SUBSET_MIN - 1, hint, sizeof(hint));
+    TEST_ASSERT_EQUAL_STRING("min 15ch", hint);
+
+    FHSSdescribeSubset(FHSS_BAND_2G4, 70, 17, hint, sizeof(hint));
+    TEST_ASSERT_EQUAL_STRING("past 79", hint);
+
+    // and describing a legal pair reads the same as a stored one would
+    FHSSdescribeSubset(FHSS_BAND_2G4, 45, 20, hint, sizeof(hint));
+    TEST_ASSERT_EQUAL_STRING("45-64/80", hint);
+
+    // the stored pair is untouched by any of that
+    describeStored(FHSS_BAND_2G4, hint, sizeof(hint));
+    TEST_ASSERT_EQUAL_STRING("10-26/80", hint);
+}
+
+// The grid the From/To fields are dialled on. Both directions have to use the
+// same arithmetic, or a value the handset sends back lands on a different
+// channel from the one it was showing.
+void test_band_axis_matches_the_hop_grid(void)
+{
+    FHSSrandomiseFHSSsequence(SEED, false);
+    uint32_t startKhz, stepKhz;
+
+    TEST_ASSERT_TRUE(FHSSsubsetBandAxis(FHSS_BAND_2G4, &startKhz, &stepKhz));
+    TEST_ASSERT_EQUAL_UINT32(2400400, startKhz);
+    TEST_ASSERT_EQUAL_UINT32(1000, stepKhz);
+    // the far end of the band is exactly the table's freq_stop, so the step has
+    // not accumulated rounding error across 80 channels
+    TEST_ASSERT_EQUAL_UINT32(2479400, startKhz + 79 * stepKhz);
+
+    TEST_ASSERT_TRUE(FHSSsubsetBandAxis(FHSS_BAND_SUBGHZ, &startKhz, &stepKhz));
+    TEST_ASSERT_EQUAL_UINT32(903500, startKhz);
+    TEST_ASSERT_EQUAL_UINT32(600, stepKhz);
+    TEST_ASSERT_EQUAL_UINT32(926900, startKhz + 39 * stepKhz);
+}
+
+// What the write callbacks do with the kHz the handset sends back
+void test_channel_survives_the_round_trip_through_khz(void)
+{
+    FHSSrandomiseFHSSsequence(SEED, false);
+    const fhss_band_e bands[] = {FHSS_BAND_2G4, FHSS_BAND_SUBGHZ};
+
+    for (auto band : bands)
+    {
+        uint32_t startKhz, stepKhz;
+        TEST_ASSERT_TRUE(FHSSsubsetBandAxis(band, &startKhz, &stepKhz));
+        const uint32_t channels = FHSSsubsetBandChannels(band);
+        for (uint32_t ch = 0; ch < channels; ch++)
+        {
+            TEST_ASSERT_EQUAL_UINT8(ch, FHSSsubsetChannelForKhz(band, startKhz + ch * stepKhz));
+        }
+        // below the band, and above it: incrField() clamps to max rather than
+        // landing on a step boundary, so the top must not wrap to channel 0
+        TEST_ASSERT_EQUAL_UINT8(0, FHSSsubsetChannelForKhz(band, startKhz - stepKhz));
+        TEST_ASSERT_EQUAL_UINT8(channels - 1, FHSSsubsetChannelForKhz(band, startKhz + (channels + 4) * stepKhz));
+        // and half a channel either side of a grid point still resolves to it
+        TEST_ASSERT_EQUAL_UINT8(7, FHSSsubsetChannelForKhz(band, startKhz + 7 * stepKhz + stepKhz / 3));
+        TEST_ASSERT_EQUAL_UINT8(7, FHSSsubsetChannelForKhz(band, startKhz + 7 * stepKhz - stepKhz / 3));
+    }
+}
+
 // Unity setup/teardown
 void setUp()
 {
@@ -576,6 +727,13 @@ int main(int argc, char **argv)
     RUN_TEST(test_subset_range_bounds);
     RUN_TEST(test_subset_small_domain);
     RUN_TEST(test_subset_structural_bound);
+    RUN_TEST(test_band_channels_per_domain);
+    RUN_TEST(test_set_band_subset_refuses_what_does_not_fit);
+    RUN_TEST(test_describe_band_subset);
+    RUN_TEST(test_describe_subset_fits_the_display);
+    RUN_TEST(test_describe_subset_explains_a_pair_that_was_never_stored);
+    RUN_TEST(test_band_axis_matches_the_hop_grid);
+    RUN_TEST(test_channel_survives_the_round_trip_through_khz);
     UNITY_END();
 
     return 0;
