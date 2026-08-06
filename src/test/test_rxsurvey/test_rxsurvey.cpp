@@ -214,6 +214,53 @@ static void test_second_band_axis_round_trips()
     TEST_ASSERT_EQUAL_UINT(0, out.channelCount2);
 }
 
+// The 3-byte in-flight transport: three fields and three flag bits share three
+// bytes, so the test pins the exact bit positions -- a swapped bit here would
+// decode as plausible data on the other side, not as garbage.
+static void test_debug_bytes_round_trip()
+{
+    const surveyDebug_t cases[] = {
+        {0, 0, 0, false, false, false},
+        {126, 126, 126, true, true, true},
+        {SURVEY_DBG_MAG_INVALID, 0, SURVEY_DBG_CHAN_NONE, false, true, false},
+        {100, 95, 42, true, false, true},
+        {95, 100, 79, false, true, false}, // the highest real 2.4 channel index
+    };
+    for (uint8_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
+    {
+        uint8_t bytes[3];
+        surveyDebug_t got;
+        SurveyPackDebug(bytes, &cases[i]);
+        SurveyUnpackDebug(bytes, &got);
+        TEST_ASSERT_EQUAL_UINT(cases[i].magA, got.magA);
+        TEST_ASSERT_EQUAL_UINT(cases[i].magB, got.magB);
+        TEST_ASSERT_EQUAL_UINT(cases[i].chan, got.chan);
+        TEST_ASSERT_EQUAL(cases[i].toggle, got.toggle);
+        TEST_ASSERT_EQUAL(cases[i].clean, got.clean);
+        TEST_ASSERT_EQUAL(cases[i].bit7, got.bit7);
+    }
+
+    // pin the bit layout itself, not just the round trip
+    const surveyDebug_t d = {100, 95, 42, true, false, true};
+    uint8_t bytes[3];
+    SurveyPackDebug(bytes, &d);
+    TEST_ASSERT_EQUAL_HEX8(0xE4, bytes[0]); // 100 | toggle<<7
+    TEST_ASSERT_EQUAL_HEX8(0x5F, bytes[1]); // 95, clean clear
+    TEST_ASSERT_EQUAL_HEX8(0xAA, bytes[2]); // 42 | bit7<<7
+}
+
+// -100 dBm rides the wire as 100; a positive or absurd reading must clamp
+// instead of wrapping into a plausible one.
+static void test_debug_magnitude_clamps()
+{
+    TEST_ASSERT_EQUAL_UINT(100, SurveyDbgMagFromDbm(-100));
+    TEST_ASSERT_EQUAL_UINT(0, SurveyDbgMagFromDbm(0));
+    TEST_ASSERT_EQUAL_UINT(0, SurveyDbgMagFromDbm(12));
+    TEST_ASSERT_EQUAL_UINT(126, SurveyDbgMagFromDbm(-126));
+    TEST_ASSERT_EQUAL_UINT(126, SurveyDbgMagFromDbm(-127)); // never packs as INVALID
+    TEST_ASSERT_EQUAL_UINT(126, SurveyDbgMagFromDbm(-300));
+}
+
 static void test_decode_rejects_malformed()
 {
     surveySample_t in[SURVEY_MAX_SAMPLES_PER_FRAME];
@@ -285,6 +332,8 @@ int main(int argc, char **argv)
     RUN_TEST(test_dropped_count_is_16_bit);
     RUN_TEST(test_channel_axis_matches_the_sweep_grid);
     RUN_TEST(test_second_band_axis_round_trips);
+    RUN_TEST(test_debug_bytes_round_trip);
+    RUN_TEST(test_debug_magnitude_clamps);
     RUN_TEST(test_decode_rejects_malformed);
     RUN_TEST(test_encode_rejects_impossible_input);
     return UNITY_END();

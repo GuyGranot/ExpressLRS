@@ -1,21 +1,22 @@
 Regenerating the golden vectors in python/rxsurvey.py
 =====================================================
 
-GOLDEN_FRAMES in python/rxsurvey.py is not hand-written and must not be edited by
-hand. The frames come from SurveyEncodeFrame() itself, compiled for the host, so
-the Python decoder is checked against the real encoder rather than against a
-Python re-implementation of it -- which would agree with itself no matter how
-wrong both were.
+GOLDEN_FRAMES and GOLDEN_DEBUG in python/rxsurvey.py are not hand-written and
+must not be edited by hand. The frames come from SurveyEncodeFrame() and
+SurveyPackDebug() themselves, compiled for the host, so the Python decoders are
+checked against the real encoders rather than against a Python re-implementation
+of them -- which would agree with itself no matter how wrong both were.
 
 Regenerate whenever the wire format in lib/RxSurvey/SurveyProtocol.h changes.
 Save the program below as gen.cpp somewhere outside the tree, then from src/:
 
     g++ -std=c++11 -Ilib/RxSurvey -o gen gen.cpp && ./gen
 
-Paste the two hex lines into GOLDEN_FRAMES, keeping the order (full frame first,
-gate report second), and re-run `python rxsurvey.py --selftest`. The field values
-below are what the selftest asserts, so change both together or the assertions
-stop testing the encoder and start testing themselves.
+Paste the first two hex lines into GOLDEN_FRAMES, keeping the order (full frame
+first, gate report second), and the last two into GOLDEN_DEBUG; then re-run
+`python rxsurvey.py --selftest`. The field values below are what the selftest
+asserts, so change both together or the assertions stop testing the encoder and
+start testing themselves.
 
 ----------------------------------------------------------------------------
 #include <cstdio>
@@ -78,6 +79,15 @@ int main()
     gate.dropped = 600;
     gate.sampleCount = 0;
     dump(payload, SurveyEncodeFrame(payload, 0, &gate));
+
+    // two packed 3-byte transport samples: an ordinary one, then the sentinels
+    const surveyDebug_t d1 = {100, 95, 42, true, false, true};
+    const surveyDebug_t d2 = {SURVEY_DBG_MAG_INVALID, 0, SURVEY_DBG_CHAN_NONE, false, true, false};
+    uint8_t dbg[3];
+    SurveyPackDebug(dbg, &d1);
+    dump(dbg, 3);
+    SurveyPackDebug(dbg, &d2);
+    dump(dbg, 3);
     return 0;
 }
 ----------------------------------------------------------------------------

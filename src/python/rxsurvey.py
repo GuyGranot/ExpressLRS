@@ -191,6 +191,26 @@ def chan2_freq_khz(rec, chan):
     return chan_freq_khz(rec, chan)
 
 
+# The 3-byte in-flight transport (SurveyPackDebug/SurveyUnpackDebug): the
+# shipping survey rides the three dead downlink bytes of the link-statistics
+# frame, logged by Betaflight as debug[0..2]. Magnitudes are -dBm (127 = none);
+# bit 7 is toggle / clean / assignment-or-band respectively.
+DBG_MAG_INVALID = 127
+DBG_CHAN_NONE = 127
+
+
+def unpack_debug(b0, b1, b2):
+    return {
+        "magA": b0 & 0x7F, "toggle": bool(b0 & 0x80),
+        "magB": b1 & 0x7F, "clean": bool(b1 & 0x80),
+        "chan": b2 & 0x7F, "bit7": bool(b2 & 0x80),
+    }
+
+
+def debug_rssi(mag):
+    return None if mag == DBG_MAG_INVALID else -mag
+
+
 def gate_reasons(flags):
     return [text for bit, text in GATE_TEXT if flags & bit]
 
@@ -603,6 +623,11 @@ GOLDEN_FRAMES = [
     "03021933320401f40c28000dc94c02580024a09003e850025800",
 ]
 
+# Packed 3-byte transport samples from SurveyPackDebug(), same recipe: an
+# ordinary sample (magA 100 + toggle, magB 95, chan 42 + bit7), then the
+# sentinels (magA invalid, magB 0 + clean, chan none).
+GOLDEN_DEBUG = ["e45faa", "7f807f"]
+
 
 def run_selftest():
     frames = [bytes.fromhex(g) for g in GOLDEN_FRAMES]
@@ -657,6 +682,16 @@ def run_selftest():
     assert chan2_freq_khz(gate, 0) == 2400400
     assert chan2_freq_khz(gate, 79) == 2479400, chan2_freq_khz(gate, 79)
     assert flatten(gate, 0.0) == []
+
+    # the 3-byte transport, against triples the firmware packer produced
+    d1 = unpack_debug(*bytes.fromhex(GOLDEN_DEBUG[0]))
+    assert d1 == {"magA": 100, "toggle": True, "magB": 95, "clean": False,
+                  "chan": 42, "bit7": True}, d1
+    assert debug_rssi(d1["magA"]) == -100 and debug_rssi(d1["magB"]) == -95
+    d2 = unpack_debug(*bytes.fromhex(GOLDEN_DEBUG[1]))
+    assert d2 == {"magA": DBG_MAG_INVALID, "toggle": False, "magB": 0,
+                  "clean": True, "chan": DBG_CHAN_NONE, "bit7": False}, d2
+    assert debug_rssi(d2["magA"]) is None and debug_rssi(d2["magB"]) == 0
 
     # a foreign sub-type is rejected, not crashed on: 0x83 is shared with the
     # spectrum sweep, which owns 0x01 and 0x02

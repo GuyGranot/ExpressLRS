@@ -320,3 +320,75 @@ static inline uint32_t SurveyChan2FreqKhz(const surveyFrameInfo_t *info, const u
 {
     return info->startFreqKhz2 + (uint32_t)chan * (uint32_t)info->stepKhz2;
 }
+
+/*
+ * The 3-byte in-flight transport.
+ *
+ * The shipping survey exports one sample per CRSF link-statistics frame through
+ * the three downlink bytes that are dead on a receiver (downlink_RSSI_1,
+ * downlink_Link_quality, downlink_SNR), which Betaflight has logged untouched
+ * as debug[0..2] under debug_mode = CRSF_LINK_STATISTICS_DOWN since 4.2.
+ *
+ *   debug[0]  bits 6..0: source A magnitude, 0-126 = -dBm antenna-referred,
+ *             127 = unavailable. bit 7: freshness toggle -- flips once per
+ *             staged sample. Frames can repeat back to back (forced sends), so
+ *             "new sample" is "the toggle changed", not "a frame arrived".
+ *   debug[1]  bits 6..0: source B magnitude, same encoding, so the two chains
+ *             quantize identically and their delta carries no packing artefact.
+ *             bit 7: clean-sample bit -- no wanted packet arrived in the period
+ *             this sample was taken (the in-band AGC cross-check).
+ *   debug[2]  bits 6..0: FHSS channel index, 127 = no sample yet.
+ *             bit 7: on a single-band link, the assignment bit (Gemini
+ *             radio-swap parity, or the active antenna on switched diversity);
+ *             on a dual-band link, the band bit -- 0 = the index is into the
+ *             sub-GHz grid, 1 = into the 2.4 grid. Which grid alternates per
+ *             sample, so each band joins at half the export cadence.
+ *
+ * Source A is radio 1 (the sub-GHz radio on a dual-band link), source B is
+ * radio 2. Both magnitudes are present in every sample regardless of which
+ * band's index debug[2] carries.
+ */
+#define SURVEY_DBG_MAG_INVALID 127
+#define SURVEY_DBG_CHAN_NONE 127
+
+/** One decoded sample of the 3-byte transport; drives both pack and unpack. */
+typedef struct surveyDebug_s
+{
+    uint8_t magA; // 0-126, or SURVEY_DBG_MAG_INVALID
+    uint8_t magB;
+    uint8_t chan; // 0-126, or SURVEY_DBG_CHAN_NONE
+    bool toggle;
+    bool clean;
+    bool bit7; // assignment bit or band bit, see above
+} surveyDebug_t;
+
+/** Antenna-referred dBm -> transport magnitude. -100 dBm packs as 100. */
+static inline uint8_t SurveyDbgMagFromDbm(int16_t dbm)
+{
+    if (dbm > 0)
+    {
+        dbm = 0;
+    }
+    if (dbm < -126)
+    {
+        dbm = -126;
+    }
+    return (uint8_t)-dbm;
+}
+
+static inline void SurveyPackDebug(uint8_t out[3], const surveyDebug_t *in)
+{
+    out[0] = (uint8_t)((in->magA & 0x7F) | (in->toggle ? 0x80 : 0));
+    out[1] = (uint8_t)((in->magB & 0x7F) | (in->clean ? 0x80 : 0));
+    out[2] = (uint8_t)((in->chan & 0x7F) | (in->bit7 ? 0x80 : 0));
+}
+
+static inline void SurveyUnpackDebug(const uint8_t in[3], surveyDebug_t *out)
+{
+    out->magA = in[0] & 0x7F;
+    out->toggle = (in[0] & 0x80) != 0;
+    out->magB = in[1] & 0x7F;
+    out->clean = (in[1] & 0x80) != 0;
+    out->chan = in[2] & 0x7F;
+    out->bit7 = (in[2] & 0x80) != 0;
+}
