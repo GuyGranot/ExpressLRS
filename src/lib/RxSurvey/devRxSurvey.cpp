@@ -302,7 +302,12 @@ static uint16_t LinkBandwidthKhz()
 #if defined(RADIO_SX127X)
     return 500;
 #elif defined(RADIO_LR1121)
-    return RadioBandMod::isB900(ExpressLRS_currAirRate_Modparams->radio_type) ? 500 : 812;
+    // DualBand counts as sub-GHz here: radio 1 is configured from bw/sf/cr and
+    // radio 2 from bw2/sf2/cr2 (rx_main.cpp), so the chain this frame reports is
+    // the 500 kHz sub-GHz one -- and it is the only one reported, because
+    // HandleFHSS invalidates chan2 when the two radios sit in different bands.
+    const uint8_t rt = ExpressLRS_currAirRate_Modparams->radio_type;
+    return (RadioBandMod::isB900(rt) || RadioBandMod::isBDUAL(rt)) ? 500 : 812;
 #else // RADIO_SX128X
     return 812;
 #endif
