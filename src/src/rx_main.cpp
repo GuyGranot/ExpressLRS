@@ -106,6 +106,11 @@ device_affinity_t ui_devices[] = {
   // and the RXdone ISR that fills the ring is attached from core 1.
   {&RxSurvey_device, 1},
 #endif
+#if defined(RX_FLIGHT_SURVEY)
+  // Core 1 for the same reason: the bench-stream drain masks interrupts on its
+  // own core only, and the tock ISR that fills the ring is attached from core 1.
+  {&RxFlightSurvey_device, 1},
+#endif
 };
 
 uint8_t antenna = 0;    // which antenna is currently in use

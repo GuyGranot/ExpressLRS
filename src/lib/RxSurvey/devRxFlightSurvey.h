@@ -78,12 +78,28 @@ void RxFlightSurveyPublish();
 /** Link-stats cadence: 40 ms while armed (25 Hz), the caller's default otherwise. */
 uint32_t RxFlightSurveyLinkStatsInterval(uint32_t defaultIntervalMs);
 
+/**
+ * Turn the 0x83 bench stream on or off (the 'sf' serial command). While on AND
+ * armed, every staged sample is also emitted in full fidelity over the FC UART
+ * so rxsurvey.py can validate the sampler without a Blackbox. Off at boot and
+ * cleared by SetMode(Off); a flight never asks, so a flight never pays for it.
+ */
+void RxFlightSurveyBenchStream(bool on);
+
+/** Emit the extended status frame (worst tock us, mode, coverage generation). */
+void RxFlightSurveySendStatus();
+
+#include "device.h"
+extern device_t RxFlightSurvey_device;
+
 #else
 
 static inline void RxFlightSurveySetMode(uint8_t) {}
 static inline uint8_t RxFlightSurveyGetMode() { return 0; }
 static inline void RxFlightSurveyTock() {}
 static inline void RxFlightSurveyPublish() {}
+static inline void RxFlightSurveyBenchStream(bool) {}
+static inline void RxFlightSurveySendStatus() {}
 static inline uint32_t RxFlightSurveyLinkStatsInterval(uint32_t defaultIntervalMs)
 {
     return defaultIntervalMs;

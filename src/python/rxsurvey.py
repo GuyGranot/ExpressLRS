@@ -48,6 +48,11 @@ from rxspectrum import (CRSFReader, CRSF_ADDRESS_CRSF_RECEIVER, CRSF_FRAMETYPE_E
 # [on, offset us/4, period ms].
 SURVEY_SEQ = [0xEC, 0x04, 0x32, ord('s'), ord('v')]
 
+# The in-flight survey's bench command ('sf'): [stream on/off, optional mode].
+# Mode is FLIGHT_SURVEY_* (0=Off 1=Both 2=900 3=2.4), so a bench without a
+# handset can arm remotely; omit it to leave the Lua-set mode alone.
+FLIGHT_SEQ = [0xEC, 0x04, 0x32, ord('s'), ord('f')]
+
 # Survey sub-protocol, mirroring lib/RxSurvey/SurveyProtocol.h
 SUBTYPE = 0x03
 SUBTYPE_STATUS = 0x04
@@ -67,6 +72,7 @@ FLAG_GATED_TIMER = 0x08
 FLAG_GATED_RATE = 0x10
 FLAG_GATED_BINDING = 0x20
 FLAG_GATED_RADIO = 0x40
+FLAG_GATED_LQ = 0x80  # flight survey only: link up but LQ under the threshold
 
 # Ordered most-explanatory first: GATED_RADIO causes GATED_LINK and GATED_TIMER,
 # so reporting it first stops the reader chasing the transmitter.
@@ -77,8 +83,10 @@ GATE_TEXT = [
     (FLAG_GATED_TIMER, "receiver timer not locked yet"),
     (FLAG_GATED_RATE, "not a LoRa air rate; switch the handset off FLRC/GFSK"),
     (FLAG_GATED_BINDING, "receiver is in binding mode"),
+    (FLAG_GATED_LQ, "uplink LQ under the survey's sampling threshold"),
 ]
-ALL_GATES = FLAG_GATED_LINK | FLAG_GATED_TIMER | FLAG_GATED_RATE | FLAG_GATED_BINDING | FLAG_GATED_RADIO
+ALL_GATES = (FLAG_GATED_LINK | FLAG_GATED_TIMER | FLAG_GATED_RATE | FLAG_GATED_BINDING |
+             FLAG_GATED_RADIO | FLAG_GATED_LQ)
 
 SFLAG_PACKET_ON_RADIO2 = 0x01
 SFLAG_GEMINI = 0x02
@@ -98,10 +106,12 @@ def decode_link_statistics(type_and_body):
     if type_and_body[0] != CRSF_FRAMETYPE_LINK_STATISTICS:
         return None
     p = type_and_body[1:]
-    # RSSI is sent positivized: -80 dBm goes out as 80.
+    # RSSI is sent positivized: -80 dBm goes out as 80. The last three bytes are
+    # the downlink fields, dead on a stock receiver -- the in-flight survey's
+    # 3-byte transport rides exactly there (unpack with unpack_debug).
     return {"uplinkRssi1": -p[0], "uplinkRssi2": -p[1], "uplinkLQ": p[2],
             "uplinkSnr": to_int8(p[3]), "antenna": p[4], "rfMode": p[5],
-            "txPower": p[6]}
+            "txPower": p[6], "debug": (p[7], p[8], p[9])}
 
 STATUS_ARMED = 0
 STATUS_DISARMED = 1
@@ -116,6 +126,13 @@ def to_int8(v):
 def build_command(on, offset_us=200, period_ms=100):
     q = min(max(int(offset_us), 0), OFFSET_MAX_US) // OFFSET_QUANTUM_US
     return bootloader.get_telemetry_seq(SURVEY_SEQ, [1 if on else 0, q, period_ms])
+
+
+def build_flight_command(stream_on, mode=None):
+    extra = [1 if stream_on else 0]
+    if mode is not None:
+        extra.append(mode)
+    return bootloader.get_telemetry_seq(FLIGHT_SEQ, extra)
 
 
 # Port of SurveyDecodeFrame. Returns a dict, or None if this is not a
@@ -172,11 +189,17 @@ def decode_survey_payload(payload):
 def decode_status_payload(payload):
     if len(payload) < 5 or payload[0] != SUBTYPE_STATUS or payload[1] != PROTO_VERSION:
         return None
-    return {
+    st = {
         "armed": payload[2] == STATUS_ARMED,
         "offsetUs": payload[3] * OFFSET_QUANTUM_US,
         "periodMs": payload[4],
     }
+    # The flight survey's extended form; length-tolerant on purpose.
+    if len(payload) >= 9:
+        st["worstTockUs"] = (payload[5] << 8) | payload[6]
+        st["mode"] = payload[7]
+        st["coverageGen"] = payload[8]
+    return st
 
 
 def chan_freq_khz(rec, chan):
@@ -406,6 +429,166 @@ def run_disarm(args):
     finally:
         s.close()
     return 0
+
+
+# ------------------------------------------------------------------- watch ----
+
+
+MODE_NAMES = {0: "Off", 1: "Both", 2: "900", 3: "2.4"}
+MODE_FROM_ARG = {"off": 0, "both": 1, "900": 2, "2.4": 3}
+
+# enum_rate values of the dual-band rates: the transport's debug[2] bit 7 is a
+# band bit on these, an assignment bit everywhere else.
+DUAL_BAND_RF_MODES = {100, 101}
+
+
+# Watch the in-flight survey's 3-byte transport live (RX_FLIGHT_SURVEY): decode
+# the ordinary link-statistics frames, dedupe on the freshness toggle, unpack
+# the debug bytes, and -- unless --no-stream -- also request the full-fidelity
+# 0x83 stream and check every deduped sample appears identically on both
+# transports. This validates on the bench exactly what Betaflight will log.
+def run_watch(args):
+    s = open_rx_serial(args)
+    mode = MODE_FROM_ARG[args.mode] if args.mode else None
+    stream_on = not args.no_stream
+    log_f = open(args.log, "w") if args.log else None
+    reader = CRSFReader()
+    t0 = time.time()
+
+    samples = []       # deduped debug-byte samples, the transport under test
+    stream_recent = [] # recent 0x83 samples converted for the cross-check
+    counts = {"frames": 0, "stream": 0, "matched": 0}
+    state = {"toggle": None, "dual": None, "status": None, "gates": 0,
+             "chanCount": None, "chanCount2": None}
+
+    def note_link_stats(ls, now):
+        counts["frames"] += 1
+        d = unpack_debug(*ls["debug"])
+        if state["dual"] is None:
+            state["dual"] = ls["rfMode"] in DUAL_BAND_RF_MODES
+        if d["toggle"] == state["toggle"]:
+            return # the same staged sample re-sent; forced back-to-back sends exist
+        first = state["toggle"] is None
+        state["toggle"] = d["toggle"]
+        if first or (d["chan"] == DBG_CHAN_NONE and d["magA"] == DBG_MAG_INVALID):
+            return # "no sample yet", or an unknown-age sample at startup
+        row = {"t": round(now - t0, 4), "magA": d["magA"], "magB": d["magB"],
+               "chan": d["chan"], "clean": d["clean"], "bit7": d["bit7"],
+               "rssiA": debug_rssi(d["magA"]), "rssiB": debug_rssi(d["magB"]),
+               "dual": state["dual"]}
+        if state["dual"]:
+            row["band"] = "2.4" if d["bit7"] else "900"
+        samples.append(row)
+        if log_f is not None:
+            log_f.write(json.dumps(row) + "\n")
+        for i, cand in enumerate(stream_recent):
+            if (d["magA"], d["magB"]) == cand["mags"] and d["chan"] in cand["chans"]:
+                counts["matched"] += 1
+                del stream_recent[:i + 1]
+                break
+
+    def note_stream(rec):
+        state["chanCount"] = rec["channelCount"]
+        state["chanCount2"] = rec["channelCount2"]
+        if rec["channelCount2"]:
+            state["dual"] = True
+        for smp in rec["samples"]:
+            counts["stream"] += 1
+            magA = (DBG_MAG_INVALID if smp["rssi1"] == RSSI_INVALID
+                    else max(0, min(126, -smp["rssi1"])))
+            magB = (DBG_MAG_INVALID if smp["rssi2"] == RSSI_INVALID
+                    else max(0, min(126, -smp["rssi2"])))
+            chans = {c for c in (smp["chan1"], smp["chan2"]) if c != CHAN_INVALID}
+            stream_recent.append({"mags": (magA, magB), "chans": chans})
+        del stream_recent[:-16]
+
+    dbg_print("======== FLIGHT SURVEY WATCH ========")
+    dbg_print("  %.0f s on %s @ %s; the RC link must be up."
+              % (args.dwell, args.port, args.baud))
+    try:
+        s.write(build_flight_command(stream_on, mode))
+        s.flush()
+        end = time.time() + args.dwell
+        status_deadline = time.time() + 1.5
+        while time.time() < end:
+            data = s.read(256)
+            now = time.time()
+            if state["status"] is None and now > status_deadline:
+                dbg_print("  no answer -- is the receiver built with -DRX_FLIGHT_SURVEY?")
+                return 1
+            if not data:
+                continue
+            for ftype, body in reader.feed(data):
+                if ftype == CRSF_FRAMETYPE_LINK_STATISTICS:
+                    ls = decode_link_statistics(body)
+                    if ls is not None:
+                        note_link_stats(ls, now)
+                    continue
+                if ftype != CRSF_FRAMETYPE_ELRS_VENDOR:
+                    continue
+                vp = extract_vendor_payload(body)
+                if vp is None:
+                    continue
+                st = decode_status_payload(vp)
+                if st is not None:
+                    if state["status"] is None:
+                        dbg_print("  receiver: %s, mode %s, export interval %d ms"
+                                  % ("ARMED" if st["armed"] else "disarmed",
+                                     MODE_NAMES.get(st.get("mode", -1), "?"),
+                                     st["periodMs"]))
+                        if not st["armed"] and mode is None:
+                            dbg_print("  (arm from the handset Lua, or rerun with --mode)")
+                    state["status"] = st
+                    continue
+                rec = decode_survey_payload(vp)
+                if rec is not None:
+                    state["gates"] |= rec["flags"] & ALL_GATES
+                    note_stream(rec)
+    except KeyboardInterrupt:
+        dbg_print("\ninterrupted")
+    finally:
+        try:
+            if stream_on or mode is not None:
+                # Leave nothing running: stream off, and disarm if we armed it.
+                s.write(build_flight_command(False, 0 if mode is not None else None))
+                s.flush()
+                time.sleep(0.2)
+        finally:
+            s.close()
+        if log_f is not None:
+            log_f.close()
+
+    span = max(1e-9, time.time() - t0)
+    dbg_print("  %d link-stats frames (%.1f Hz), %d new samples (%.1f Hz)"
+              % (counts["frames"], counts["frames"] / span,
+                 len(samples), len(samples) / span))
+    if samples:
+        clean = sum(1 for r in samples if r["clean"])
+        dbg_print("  clean-sample ratio %.0f%% (no wanted packet in the sample's period)"
+                  % (100.0 * clean / len(samples)))
+        if state["dual"]:
+            for band, total in (("900", state["chanCount"]), ("2.4", state["chanCount2"])):
+                rows = [r for r in samples if r.get("band") == band]
+                chans = {r["chan"] for r in rows}
+                cov = ("%d/%d channels" % (len(chans), total)) if total else \
+                      ("%d channels" % len(chans))
+                dbg_print("  band %s: %d samples (%.1f Hz), %s seen"
+                          % (band, len(rows), len(rows) / span, cov))
+        else:
+            chans = {r["chan"] for r in samples}
+            cov = ("%d/%d" % (len(chans), state["chanCount"])) if state["chanCount"] \
+                  else "%d" % len(chans)
+            dbg_print("  %s distinct channels seen" % cov)
+    if counts["stream"]:
+        dbg_print("  0x83 stream: %d samples; %d/%d debug samples matched it exactly"
+                  % (counts["stream"], counts["matched"], len(samples)))
+    st = state["status"]
+    if st is not None and "worstTockUs" in st:
+        dbg_print("  worst tock cost %d us (budget: 200 us slack), coverage generation %d"
+                  % (st["worstTockUs"], st["coverageGen"]))
+    for reason in gate_reasons(state["gates"]):
+        dbg_print("  gate blocked sampling: %s" % reason)
+    return 0 if samples else EXIT_NO_SAMPLES
 
 
 # ---------------------------------------------------------------- analysis ----
@@ -725,12 +908,26 @@ def run_selftest():
     # positivized on the wire and must come back negative, or a -80 dBm link
     # reads as +80 and every cost estimate is nonsense.
     ls = decode_link_statistics(bytes([CRSF_FRAMETYPE_LINK_STATISTICS,
-                                       80, 85, 99, 0xF6, 0, 6, 3, 0, 0, 0]))
+                                       80, 85, 99, 0xF6, 0, 6, 3, 0xE4, 0x5F, 0xAA]))
     assert ls == {"uplinkRssi1": -80, "uplinkRssi2": -85, "uplinkLQ": 99,
-                  "uplinkSnr": -10, "antenna": 0, "rfMode": 6, "txPower": 3}, ls
+                  "uplinkSnr": -10, "antenna": 0, "rfMode": 6, "txPower": 3,
+                  "debug": (0xE4, 0x5F, 0xAA)}, ls
+    # ...and the debug bytes it carries unpack as the 3-byte transport
+    assert unpack_debug(*ls["debug"]) == d1
     # a short or foreign frame is rejected rather than mis-parsed
     assert decode_link_statistics(bytes([CRSF_FRAMETYPE_LINK_STATISTICS, 1, 2])) is None
     assert decode_link_statistics(bytes([0x16] + [0] * 10)) is None
+
+    # the flight survey's bench command and its extended status frame
+    fc = build_flight_command(True, 1)
+    assert fc[3:7] == b"sf\x01\x01", fc[3:7]
+    assert bootloader.calc_crc8(fc[2:-1]) == fc[-1]
+    assert build_flight_command(False)[5] == 0
+    est = decode_status_payload(bytes([SUBTYPE_STATUS, PROTO_VERSION, 0, 0, 40, 0, 42, 1, 3]))
+    assert est["armed"] and est["periodMs"] == 40, est
+    assert est["worstTockUs"] == 42 and est["mode"] == 1 and est["coverageGen"] == 3, est
+    short = decode_status_payload(bytes([SUBTYPE_STATUS, PROTO_VERSION, 1, 50, 100]))
+    assert short == {"armed": False, "offsetUs": 200, "periodMs": 100}, short
 
     # the analysis reduces a reference sweep by live trace only
     sweep = [
@@ -756,8 +953,9 @@ def run_selftest():
 def main(custom_args=None):
     parser = argparse.ArgumentParser(
         description="Drive the Phase 0 in-flight-survey experiment on a receiver "
-                    "built with -DRX_SURVEY_PHASE0, and compare the result against "
-                    "a link-down rxspectrum.py sweep")
+                    "built with -DRX_SURVEY_PHASE0, compare the result against "
+                    "a link-down rxspectrum.py sweep, or watch the shipping "
+                    "survey's 3-byte transport live (--watch, -DRX_FLIGHT_SURVEY)")
     parser.add_argument("-b", "--baud", type=int, default=420000,
         help="Baud rate for passthrough communication")
     parser.add_argument("-p", "--port", type=str,
@@ -776,6 +974,16 @@ def main(custom_args=None):
         help="Write each reading to FILE as JSON lines")
     parser.add_argument("--disarm", action="store_true",
         help="Disarm the receiver and exit")
+    parser.add_argument("--watch", action="store_true",
+        help="Watch the in-flight survey (RX_FLIGHT_SURVEY): decode the 3-byte "
+             "transport in the link-statistics frames for --dwell seconds, "
+             "cross-checked against the full-fidelity 0x83 stream")
+    parser.add_argument("--mode", type=str, choices=["off", "both", "900", "2.4"],
+        help="With --watch: also set the survey mode remotely (otherwise arm "
+             "from the handset Lua)")
+    parser.add_argument("--no-stream", action="store_true",
+        help="With --watch: do not request the 0x83 stream; watch only what "
+             "Betaflight would see in the link-statistics frames")
     parser.add_argument("--compare", type=str, metavar="SURVEY_JSONL",
         help="Analyse a captured survey against --reference, no hardware")
     parser.add_argument("--reference", type=str, metavar="SWEEP_JSONL",
@@ -816,6 +1024,8 @@ def main(custom_args=None):
 
     if args.disarm:
         return run_disarm(args)
+    if args.watch:
+        return run_watch(args)
     return run_capture(args)
 
 

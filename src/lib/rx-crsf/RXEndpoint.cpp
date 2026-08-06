@@ -16,6 +16,10 @@
 #include "devRxSurvey.h"
 #endif
 
+#if defined(RX_FLIGHT_SURVEY)
+#include "devRxFlightSurvey.h"
+#endif
+
 extern void reset_into_bootloader();
 
 RXEndpoint::RXEndpoint()
@@ -81,6 +85,23 @@ bool RXEndpoint::handleRaw(const crsf_header_t *message)
                         (message->frame_size >= 7) ? payload[4] : 100,
                         payload[2] != 0);
             RxSurveySendStatus();
+            return true;
+        }
+#endif
+#if defined(RX_FLIGHT_SURVEY)
+        // Non CRSF, dest=s src=f -> the in-flight survey's bench hooks.
+        // payload[2] non-zero turns the full-fidelity 0x83 stream on, zero off;
+        // optional payload[3] also sets the survey mode (FLIGHT_SURVEY_*), so a
+        // bench without a handset can arm remotely. Volatile like 'sv': no
+        // radio or link side effects, and everything is off again at boot.
+        if (payload[0] == 's' && payload[1] == 'f' && message->frame_size >= 5)
+        {
+            RxFlightSurveyBenchStream(payload[2] != 0);
+            if (message->frame_size >= 6)
+            {
+                RxFlightSurveySetMode(payload[3]);
+            }
+            RxFlightSurveySendStatus();
             return true;
         }
 #endif

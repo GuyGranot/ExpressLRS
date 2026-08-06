@@ -86,8 +86,12 @@
 // command so a command that never landed is distinguishable from one that did.
 //   [0] sub-type  [1] version  [2] SURVEY_STATUS_*  [3] offset us/4 in force
 //   [4] sample period in ms in force
+// The flight survey extends it (consumers accept either length):
+//   [5:6] worst-case us the sampler has added to a tock, big endian
+//   [7] survey mode (FLIGHT_SURVEY_*)  [8] coverage generation counter
 #define SURVEY_SUBTYPE_STATUS 0x04
 #define SURVEY_STATUS_PAYLOAD_BYTES 5
+#define SURVEY_STATUS_EXT_PAYLOAD_BYTES 9
 
 #define SURVEY_STATUS_ARMED 0    // sampling whenever the gates allow it
 #define SURVEY_STATUS_DISARMED 1 // hook is a single predicated branch again
@@ -122,6 +126,9 @@ enum
     // Distinct from GATED_LINK because "no RC link" invites you to check the
     // transmitter, and in this state the transmitter is not the problem.
     SURVEY_FLAG_GATED_RADIO = 0x40,
+    // Flight survey only: uplink LQ is below its sampling threshold -- the link
+    // works but is struggling, and the survey stands aside.
+    SURVEY_FLAG_GATED_LQ = 0x80,
 };
 
 enum
