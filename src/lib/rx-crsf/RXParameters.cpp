@@ -5,6 +5,7 @@
 #include "POWERMGNT.h"
 #include "config.h"
 #include "deferred.h"
+#include "devRxFlightSurvey.h"
 #include "devServoOutput.h"
 #include "helpers.h"
 #include "rxtx_intf.h"
@@ -98,6 +99,20 @@ static selectionParameter luaAntennaGroup = {
     "External;Builtin",
     STR_EMPTYSPACE
 };
+
+#if defined(RX_FLIGHT_SURVEY)
+// Volatile, RAM only: the static 0 here IS the boot default (Off), and nothing
+// ever writes it to config -- no version-bump risk, and no link drop from
+// CheckConfigChangePending on every toggle. The selection names the band set to
+// sample; on a single-band link Both and the link's own band mean On, and the
+// absent band yields no samples. Order matches the FLIGHT_SURVEY_* enum.
+static selectionParameter luaFlightSurvey = {
+    {"RF Survey", CRSF_TEXT_SELECTION},
+    0, // value
+    "Off;Both;900;2.4",
+    STR_EMPTYSPACE
+};
+#endif
 
 static folderParameter luaTeamraceFolder = {
     {"Team Race", CRSF_FOLDER},
@@ -561,6 +576,19 @@ void RXEndpoint::registerParameters()
       config.SetAntennaGroup(arg);
     });
   }
+
+#if defined(RX_FLIGHT_SURVEY)
+  registerParameter(&luaFlightSurvey, [](propertiesCommon* item, uint8_t arg){
+    // Echo the value back. Every other selection here writes config, which
+    // raises a config event and republishes the displayed values. This one is
+    // deliberately not persisted, so it raises no event and is never
+    // republished, leaving the handset's read-after-write to return the stale
+    // 0 -- the selector snaps back to Off while the survey is in fact armed.
+    // Same trap and same fix as luaSpectrumRbw on the TX.
+    setTextSelectionValue(&luaFlightSurvey, arg);
+    RxFlightSurveySetMode(arg);
+  });
+#endif
 
   if (POWERMGNT::getMinPower() != POWERMGNT::getMaxPower())
   {
