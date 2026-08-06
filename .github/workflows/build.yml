@@ -115,6 +115,16 @@ jobs:
             flags: "-DRegulatory_Domain_FCC_915 -DRX_SPECTRUM_SCAN -DRX_SURVEY_PHASE0"
           - target: Unified_ESP32_2400_RX_via_UART
             flags: "-DRX_SPECTRUM_SCAN -DRX_SURVEY_PHASE0"
+          # The shipping in-flight survey, once per radio driver (the RSSI read
+          # and the packet-RSSI validity gate differ between them), plus one
+          # everything-at-once build to catch collisions between the three
+          # features sharing lib/RxSurvey and the 0x83 frame type.
+          - target: Unified_ESP32C3_LR1121_RX_via_UART
+            flags: "-DRegulatory_Domain_FCC_915 -DRX_FLIGHT_SURVEY"
+          - target: Unified_ESP32_2400_RX_via_UART
+            flags: "-DRX_FLIGHT_SURVEY"
+          - target: Unified_ESP32_2400_RX_via_UART
+            flags: "-DRX_SPECTRUM_SCAN -DRX_SURVEY_PHASE0 -DRX_FLIGHT_SURVEY"
     steps:
     - name: Checkout
       uses: actions/checkout@v6
