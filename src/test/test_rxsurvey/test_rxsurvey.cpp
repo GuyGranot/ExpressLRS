@@ -174,6 +174,46 @@ static void test_channel_axis_matches_the_sweep_grid()
     TEST_ASSERT_EQUAL_UINT32(926900u, SurveyChanFreqKhz(&info, G915_CHANNELS - 1));
 }
 
+// A dual-band (cross-band LR1121) link hops two grids off one sequence pointer,
+// so a v2 frame carries a second axis: chan1 joins against the primary grid and
+// chan2 against this one. Single-band frames must leave it all-zero so a
+// consumer can tell the difference without out-of-band knowledge.
+static void test_second_band_axis_round_trips()
+{
+    uint8_t payload[SURVEY_MAX_PAYLOAD_BYTES];
+    surveyFrameInfo_t info = mkInfo(0);
+
+    // the X-rate shape: sub-GHz primary, 2.4GHz second band
+    info.bwKhz = 500;
+    info.channelCount = G915_CHANNELS;
+    info.startFreqKhz = G915_START_KHZ;
+    info.stepKhz = G915_STEP_KHZ;
+    info.startFreqKhz2 = G2G4_START_KHZ;
+    info.stepKhz2 = G2G4_STEP_KHZ;
+    info.channelCount2 = G2G4_CHANNELS;
+    const uint8_t len = SurveyEncodeFrame(payload, nullptr, &info);
+    TEST_ASSERT_EQUAL_UINT(SURVEY_HEADER_BYTES, len);
+
+    surveyFrameInfo_t out;
+    memset(&out, 0, sizeof(out));
+    TEST_ASSERT_TRUE(SurveyDecodeFrame(payload, len, &out, nullptr, 0));
+    TEST_ASSERT_EQUAL_UINT32(G2G4_START_KHZ, out.startFreqKhz2);
+    TEST_ASSERT_EQUAL_UINT(G2G4_STEP_KHZ, out.stepKhz2);
+    TEST_ASSERT_EQUAL_UINT(G2G4_CHANNELS, out.channelCount2);
+    TEST_ASSERT_EQUAL_UINT32(903500u, SurveyChanFreqKhz(&out, 0));
+    TEST_ASSERT_EQUAL_UINT32(2400400u, SurveyChan2FreqKhz(&out, 0));
+    TEST_ASSERT_EQUAL_UINT32(2479400u, SurveyChan2FreqKhz(&out, G2G4_CHANNELS - 1));
+
+    // a single-band frame (mkInfo leaves the second axis zeroed) says so
+    surveyFrameInfo_t single = mkInfo(0);
+    const uint8_t slen = SurveyEncodeFrame(payload, nullptr, &single);
+    memset(&out, 0xA5, sizeof(out));
+    TEST_ASSERT_TRUE(SurveyDecodeFrame(payload, slen, &out, nullptr, 0));
+    TEST_ASSERT_EQUAL_UINT32(0, out.startFreqKhz2);
+    TEST_ASSERT_EQUAL_UINT(0, out.stepKhz2);
+    TEST_ASSERT_EQUAL_UINT(0, out.channelCount2);
+}
+
 static void test_decode_rejects_malformed()
 {
     surveySample_t in[SURVEY_MAX_SAMPLES_PER_FRAME];
@@ -202,12 +242,12 @@ static void test_decode_rejects_malformed()
 
     // sample count that does not match the length
     memcpy(bad, payload, len);
-    bad[18] = SURVEY_MAX_SAMPLES_PER_FRAME - 1;
+    bad[25] = SURVEY_MAX_SAMPLES_PER_FRAME - 1;
     TEST_ASSERT_FALSE(SurveyDecodeFrame(bad, len, &out, got, SURVEY_MAX_SAMPLES_PER_FRAME));
 
     // more samples than this build can hold
     memcpy(bad, payload, len);
-    bad[18] = SURVEY_MAX_SAMPLES_PER_FRAME + 1;
+    bad[25] = SURVEY_MAX_SAMPLES_PER_FRAME + 1;
     TEST_ASSERT_FALSE(SurveyDecodeFrame(bad, len, &out, got, SURVEY_MAX_SAMPLES_PER_FRAME));
 
     // truncated header
@@ -244,6 +284,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_signed_fields_survive);
     RUN_TEST(test_dropped_count_is_16_bit);
     RUN_TEST(test_channel_axis_matches_the_sweep_grid);
+    RUN_TEST(test_second_band_axis_round_trips);
     RUN_TEST(test_decode_rejects_malformed);
     RUN_TEST(test_encode_rejects_impossible_input);
     return UNITY_END();

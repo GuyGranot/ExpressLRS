@@ -38,13 +38,21 @@
  *   [9]      channel count of the active FHSS domain
  *   [10:13]  centre frequency of channel 0, kHz, big endian
  *   [14:15]  spacing between channel centres, kHz, big endian
- *   [16:17]  samples dropped since the last frame (ring overrun), big endian
- *   [18]     sample count N
- *   [19:]    N records of SURVEY_SAMPLE_BYTES, see below
+ *   [16:19]  centre frequency of channel 0 in the SECOND band, kHz, big endian,
+ *            or 0 when the link occupies one band. Only a dual-band (cross-band
+ *            LR1121) link has two: radio 1 hops the sub-GHz grid above while
+ *            radio 2 hops this one, both driven by one shared sequence pointer.
+ *   [20:21]  spacing of the second band's channel centres, kHz, big endian
+ *   [22]     channel count of the second band, 0 when there is none
+ *   [23:24]  samples dropped since the last frame (ring overrun), big endian
+ *   [25]     sample count N
+ *   [26:]    N records of SURVEY_SAMPLE_BYTES, see below
  *
  * Sample record:
  *   [0] FHSS channel index radio 1 was tuned to
- *   [1] same for radio 2, or SURVEY_CHAN_INVALID when there is no second radio
+ *   [1] same for radio 2: an index into the second-band axis when the frame
+ *       carries one, the primary axis otherwise, or SURVEY_CHAN_INVALID when
+ *       there is no second radio or nothing valid to report for it
  *   [2] radio 1 instantaneous RSSI, int8 dBm, or SURVEY_RSSI_INVALID
  *   [3] radio 2 instantaneous RSSI, int8 dBm, or SURVEY_RSSI_INVALID
  *   [4] ACHIEVED offset from packet end, us/4 (clamped at 255 = 1020us)
@@ -70,7 +78,9 @@
 // stays free of CRSF includes. 0x01/0x02 belong to SpectrumProtocol.h.
 #define SURVEY_SUBTYPE 0x03
 
-#define SURVEY_PROTO_VERSION 1
+// Version 2 added the second-band axis at [16:22]; version 1 frames (no such
+// axis, 19-byte header, 5 samples) are rejected rather than half-read.
+#define SURVEY_PROTO_VERSION 2
 
 // Sub-type 0x04: the receiver's answer to an arm/disarm command, sent on every
 // command so a command that never landed is distinguishable from one that did.
@@ -83,9 +93,9 @@
 #define SURVEY_STATUS_DISARMED 1 // hook is a single predicated branch again
 
 #define SURVEY_SAMPLE_BYTES 7
-#define SURVEY_HEADER_BYTES 19
-// 5 samples keeps the payload at 54 of the 58 available.
-#define SURVEY_MAX_SAMPLES_PER_FRAME 5
+#define SURVEY_HEADER_BYTES 26
+// 4 samples keeps the payload at 54 of the 58 available.
+#define SURVEY_MAX_SAMPLES_PER_FRAME 4
 #define SURVEY_MAX_PAYLOAD_BYTES (SURVEY_HEADER_BYTES + \
                                   SURVEY_SAMPLE_BYTES * SURVEY_MAX_SAMPLES_PER_FRAME)
 
@@ -118,6 +128,11 @@ enum
 {
     SURVEY_SFLAG_PACKET_ON_RADIO2 = 0x01, // the packet arrived on radio 2
     SURVEY_SFLAG_GEMINI = 0x02,           // radios were on different channels
+    // No wanted packet arrived in the period this sample was taken, so it is
+    // free of the TX's own energy and of any AGC step it caused. The in-flight
+    // cross-check: clean and post-packet populations agreeing per channel means
+    // no AGC bias on this airframe at this rate.
+    SURVEY_SFLAG_CLEAN = 0x04,
 };
 
 /**
@@ -137,6 +152,9 @@ typedef struct surveyFrameInfo_s
     uint8_t channelCount;
     uint32_t startFreqKhz;
     uint16_t stepKhz;
+    uint32_t startFreqKhz2; // 0 when the link occupies one band
+    uint16_t stepKhz2;
+    uint8_t channelCount2; // 0 when the link occupies one band
     uint16_t dropped;
     uint8_t sampleCount;
 } surveyFrameInfo_t;
@@ -193,9 +211,16 @@ static inline uint8_t SurveyEncodeFrame(uint8_t *payload, const surveySample_t *
     payload[13] = info->startFreqKhz & 0xFF;
     payload[14] = (info->stepKhz >> 8) & 0xFF;
     payload[15] = info->stepKhz & 0xFF;
-    payload[16] = (info->dropped >> 8) & 0xFF;
-    payload[17] = info->dropped & 0xFF;
-    payload[18] = info->sampleCount;
+    payload[16] = (info->startFreqKhz2 >> 24) & 0xFF;
+    payload[17] = (info->startFreqKhz2 >> 16) & 0xFF;
+    payload[18] = (info->startFreqKhz2 >> 8) & 0xFF;
+    payload[19] = info->startFreqKhz2 & 0xFF;
+    payload[20] = (info->stepKhz2 >> 8) & 0xFF;
+    payload[21] = info->stepKhz2 & 0xFF;
+    payload[22] = info->channelCount2;
+    payload[23] = (info->dropped >> 8) & 0xFF;
+    payload[24] = info->dropped & 0xFF;
+    payload[25] = info->sampleCount;
 
     uint8_t *out = &payload[SURVEY_HEADER_BYTES];
     for (uint8_t i = 0; i < info->sampleCount; i++)
@@ -238,7 +263,7 @@ static inline bool SurveyDecodeFrame(const uint8_t *payload, const uint8_t paylo
         return false;
     }
 
-    const uint8_t count = payload[18];
+    const uint8_t count = payload[25];
     if (count > SURVEY_MAX_SAMPLES_PER_FRAME || count > maxSamples)
     {
         return false;
@@ -259,7 +284,11 @@ static inline bool SurveyDecodeFrame(const uint8_t *payload, const uint8_t paylo
     info->startFreqKhz = ((uint32_t)payload[10] << 24) | ((uint32_t)payload[11] << 16) |
                          ((uint32_t)payload[12] << 8) | (uint32_t)payload[13];
     info->stepKhz = ((uint16_t)payload[14] << 8) | (uint16_t)payload[15];
-    info->dropped = ((uint16_t)payload[16] << 8) | (uint16_t)payload[17];
+    info->startFreqKhz2 = ((uint32_t)payload[16] << 24) | ((uint32_t)payload[17] << 16) |
+                          ((uint32_t)payload[18] << 8) | (uint32_t)payload[19];
+    info->stepKhz2 = ((uint16_t)payload[20] << 8) | (uint16_t)payload[21];
+    info->channelCount2 = payload[22];
+    info->dropped = ((uint16_t)payload[23] << 8) | (uint16_t)payload[24];
     info->sampleCount = count;
 
     const uint8_t *in = &payload[SURVEY_HEADER_BYTES];
@@ -284,4 +313,10 @@ static inline bool SurveyDecodeFrame(const uint8_t *payload, const uint8_t paylo
 static inline uint32_t SurveyChanFreqKhz(const surveyFrameInfo_t *info, const uint8_t chan)
 {
     return info->startFreqKhz + (uint32_t)chan * (uint32_t)info->stepKhz;
+}
+
+/** Same, on the second band's axis. Meaningless when startFreqKhz2 is 0. */
+static inline uint32_t SurveyChan2FreqKhz(const surveyFrameInfo_t *info, const uint8_t chan)
+{
+    return info->startFreqKhz2 + (uint32_t)chan * (uint32_t)info->stepKhz2;
 }

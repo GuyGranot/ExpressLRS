@@ -51,10 +51,10 @@ SURVEY_SEQ = [0xEC, 0x04, 0x32, ord('s'), ord('v')]
 # Survey sub-protocol, mirroring lib/RxSurvey/SurveyProtocol.h
 SUBTYPE = 0x03
 SUBTYPE_STATUS = 0x04
-PROTO_VERSION = 1
-HEADER_BYTES = 19
+PROTO_VERSION = 2
+HEADER_BYTES = 26
 SAMPLE_BYTES = 7
-MAX_SAMPLES_PER_FRAME = 5
+MAX_SAMPLES_PER_FRAME = 4
 CHAN_INVALID = 0xFF
 RSSI_INVALID = -128
 OFFSET_QUANTUM_US = 4
@@ -82,6 +82,7 @@ ALL_GATES = FLAG_GATED_LINK | FLAG_GATED_TIMER | FLAG_GATED_RATE | FLAG_GATED_BI
 
 SFLAG_PACKET_ON_RADIO2 = 0x01
 SFLAG_GEMINI = 0x02
+SFLAG_CLEAN = 0x04  # no wanted packet this period: free of the TX's own energy
 
 # The receiver's ordinary link-statistics frame, which is already on the same
 # UART. Decoded here so the cost of the ISR busy-wait is MEASURED rather than
@@ -124,7 +125,7 @@ def decode_survey_payload(payload):
         return None
     if payload[0] != SUBTYPE or payload[1] != PROTO_VERSION:
         return None
-    count = payload[18]
+    count = payload[25]
     if count > MAX_SAMPLES_PER_FRAME:
         return None
     if len(payload) != HEADER_BYTES + SAMPLE_BYTES * count:
@@ -156,7 +157,14 @@ def decode_survey_payload(payload):
         "startFreqKhz": ((payload[10] << 24) | (payload[11] << 16) |
                          (payload[12] << 8) | payload[13]),
         "stepKhz": (payload[14] << 8) | payload[15],
-        "dropped": (payload[16] << 8) | payload[17],
+        # Second-band axis: a dual-band link hops two grids off one sequence
+        # pointer, so chan2 joins against this axis when it is present (all
+        # three fields are 0 on a single-band link).
+        "startFreqKhz2": ((payload[16] << 24) | (payload[17] << 16) |
+                          (payload[18] << 8) | payload[19]),
+        "stepKhz2": (payload[20] << 8) | payload[21],
+        "channelCount2": payload[22],
+        "dropped": (payload[23] << 8) | payload[24],
         "samples": samples,
     }
 
@@ -173,6 +181,14 @@ def decode_status_payload(payload):
 
 def chan_freq_khz(rec, chan):
     return rec["startFreqKhz"] + chan * rec["stepKhz"]
+
+
+# Frequency of a radio-2 channel: the second band's axis when the frame carries
+# one, the shared primary axis otherwise (diversity/Gemini -- one band).
+def chan2_freq_khz(rec, chan):
+    if rec.get("startFreqKhz2"):
+        return rec["startFreqKhz2"] + chan * rec["stepKhz2"]
+    return chan_freq_khz(rec, chan)
 
 
 def gate_reasons(flags):
@@ -195,7 +211,7 @@ def flatten(rec, t):
                 "t": round(t, 4),
                 "radio": radio,
                 "chan": chan,
-                "freqKhz": chan_freq_khz(rec, chan),
+                "freqKhz": chan_freq_khz(rec, chan) if radio == 1 else chan2_freq_khz(rec, chan),
                 "rssi": rssi,
                 "offsetUs": s["offsetUs"],
                 "reqOffsetUs": rec["reqOffsetUs"],
@@ -579,11 +595,12 @@ def run_compare(args):
 # of it. Regenerate whenever the wire format changes; the recipe is in
 # test/test_rxsurvey/README.
 GOLDEN_FRAMES = [
-    # a full 5-sample frame, 2.4GHz grid, dual radio, Gemini
-    "030103323204032c0c500024a09003e800000500289ca132d80201299da232d70302"
-    "2a9ea332d602032b9fa432d503042ca0a532d402",
-    # the gate report: no samples, GATED_TIMER | GATED_RATE, 40-channel 915 grid
-    "03011933320401f40c28000dc94c0258025800",
+    # a full 4-sample frame, 2.4GHz grid (no second band), dual radio, Gemini
+    "030203323204032c0c500024a09003e80000000000000000000400289ca132d80201"
+    "299da232d703022a9ea332d602032b9fa432d503",
+    # the gate report: no samples, GATED_TIMER | GATED_RATE, dual-band grids
+    # (40-channel 915 primary, 80-channel 2.4 second axis)
+    "03021933320401f40c28000dc94c02580024a09003e850025800",
 ]
 
 
@@ -600,7 +617,10 @@ def run_selftest():
     assert full["channelCount"] == 80, full["channelCount"]
     assert full["startFreqKhz"] == 2400400, full["startFreqKhz"]
     assert full["stepKhz"] == 1000, full["stepKhz"]
-    assert len(full["samples"]) == 5, len(full["samples"])
+    # single-band frame: the second axis is absent and radio 2 shares the grid
+    assert full["startFreqKhz2"] == 0 and full["channelCount2"] == 0, full
+    assert chan2_freq_khz(full, 40) == chan_freq_khz(full, 40)
+    assert len(full["samples"]) == 4, len(full["samples"])
 
     # signed fields are what a byte-wise codec gets wrong silently
     s0 = full["samples"][0]
@@ -616,7 +636,7 @@ def run_selftest():
 
     # Gemini reads two different channels at one instant; flatten must keep both
     rows = flatten(full, 0.0)
-    assert len(rows) == 10, len(rows)
+    assert len(rows) == 8, len(rows)
     assert {r["chan"] for r in rows[:2]} == {0, 40}, rows[:2]
 
     gate = decode_survey_payload(frames[1])
@@ -631,6 +651,11 @@ def run_selftest():
     assert both[0] == dict(GATE_TEXT)[FLAG_GATED_RADIO], both
     assert gate_reasons(0) == []
     assert chan_freq_khz(gate, 39) == 926900, chan_freq_khz(gate, 39)
+    # the dual-band second axis: chan2 joins against the 2.4 grid, not the 915 one
+    assert gate["startFreqKhz2"] == 2400400 and gate["stepKhz2"] == 1000, gate
+    assert gate["channelCount2"] == 80, gate["channelCount2"]
+    assert chan2_freq_khz(gate, 0) == 2400400
+    assert chan2_freq_khz(gate, 79) == 2479400, chan2_freq_khz(gate, 79)
     assert flatten(gate, 0.0) == []
 
     # a foreign sub-type is rejected, not crashed on: 0x83 is shared with the
@@ -639,7 +664,7 @@ def run_selftest():
     bad[0] = 0x01
     assert decode_survey_payload(bytes(bad)) is None
     bad = bytearray(frames[0])
-    bad[18] = MAX_SAMPLES_PER_FRAME + 1
+    bad[25] = MAX_SAMPLES_PER_FRAME + 1
     assert decode_survey_payload(bytes(bad)) is None
     assert decode_survey_payload(frames[0][:HEADER_BYTES - 1]) is None
 

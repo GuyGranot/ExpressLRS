@@ -72,6 +72,9 @@ int main()
     gate.channelCount = 40;
     gate.startFreqKhz = 903500;    // the real FCC915 grid
     gate.stepKhz = 600;
+    gate.startFreqKhz2 = 2400400;  // dual-band: second axis is the 2.4GHz grid
+    gate.stepKhz2 = 1000;
+    gate.channelCount2 = 80;
     gate.dropped = 600;
     gate.sampleCount = 0;
     dump(payload, SurveyEncodeFrame(payload, 0, &gate));
