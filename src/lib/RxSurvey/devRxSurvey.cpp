@@ -3,6 +3,7 @@
 #if defined(RX_SURVEY_PHASE0)
 
 #include "SurveyProtocol.h"
+#include "SurveyShared.h"
 
 #include "common.h"
 #include "device.h"
@@ -10,7 +11,6 @@
 #include "CRSFRouter.h"
 #include "crsf_protocol.h"
 #include "RXOTAConnector.h"
-#include "FHSS.h"
 // NB: no #include "hardware.h" -- it has no include guard and arrives via
 // common.h -> targets.h. Including it directly is a redefinition error.
 
@@ -75,33 +75,6 @@ static volatile bool hopGemini;
 static int8_t lnaGainDb;
 static uint8_t frameSeq;
 static uint32_t lastEmitMs;
-
-// The SX127x driver names this GetCurrRSSI, the others GetRssiInst.
-static ICACHE_RAM_ATTR int8_t ReadRssiInst(const SX12XX_Radio_Number_t radio)
-{
-#if defined(RADIO_SX127X)
-    return Radio.GetCurrRSSI(radio);
-#else
-    return Radio.GetRssiInst(radio);
-#endif
-}
-
-// Antenna-referred, exactly as SpectrumSweep::StoreBin does it -- the two
-// readings are only comparable if the same receive-path gain is backed out of
-// both. Clamped so a real value can never collide with the sentinel.
-static ICACHE_RAM_ATTR int8_t Referred(const int8_t raw)
-{
-    const int16_t v = (int16_t)raw - (int16_t)lnaGainDb;
-    if (v < SURVEY_RSSI_INVALID + 1)
-    {
-        return SURVEY_RSSI_INVALID + 1;
-    }
-    if (v > INT8_MAX)
-    {
-        return INT8_MAX;
-    }
-    return (int8_t)v;
-}
 
 /*
  * Why sampling is not happening, evaluated from whatever context asks.
@@ -222,8 +195,9 @@ void ICACHE_RAM_ATTR RxSurveySamplePostPacket(const uint32_t packetEndUs,
     Radio.StartRssiInst(dual ? SX12XX_Radio_All : SX12XX_Radio_1);
 #endif
     const uint32_t readAt = micros();
-    const int8_t rssi1 = Referred(ReadRssiInst(SX12XX_Radio_1));
-    const int8_t rssi2 = dual ? Referred(ReadRssiInst(SX12XX_Radio_2)) : SURVEY_RSSI_INVALID;
+    const int8_t rssi1 = SurveyReferred(SurveyReadRssiInst(SX12XX_Radio_1), lnaGainDb);
+    const int8_t rssi2 = dual ? SurveyReferred(SurveyReadRssiInst(SX12XX_Radio_2), lnaGainDb)
+                              : SURVEY_RSSI_INVALID;
 
     const uint8_t head = ringHead;
     const uint8_t next = (uint8_t)((head + 1) & SURVEY_RING_MASK);
@@ -274,45 +248,6 @@ void RxSurveySendStatus()
     SendVendorFrame(buf, SURVEY_STATUS_PAYLOAD_BYTES);
 }
 
-// The channel axis, computed exactly as SpectrumSweep::ComputeAxis does. The
-// two must agree to the kHz or the per-channel join between a survey and a
-// sweep is comparing different frequencies.
-static void FillAxis(surveyFrameInfo_t *const info)
-{
-    const bool primary = FHSSusePrimaryFreqBand;
-    const fhss_config_t *const cfg = primary ? FHSSconfig : FHSSconfigDualBand;
-    const uint32_t spread = primary ? freq_spread : freq_spread_DualBand;
-
-#if defined(RADIO_LR1121)
-    // FREQ_HZ_TO_REG_VAL is the identity on LR1121: these are already Hz.
-    info->startFreqKhz = cfg->freq_start / 1000;
-    info->stepKhz = (uint16_t)((spread / FREQ_SPREAD_SCALE) / 1000);
-#else
-    info->startFreqKhz = (uint32_t)(((double)cfg->freq_start * FREQ_STEP / 1000.0) + 0.5);
-    info->stepKhz = (uint16_t)((((double)spread / FREQ_SPREAD_SCALE) * FREQ_STEP / 1000.0) + 0.5);
-#endif
-    info->channelCount = (uint8_t)cfg->freq_count;
-}
-
-// The live link's own sensing bandwidth. Only ever called on a LoRa rate (the
-// SURVEY_FLAG_GATED_RATE gate), where every rate in a band shares the band's
-// widest bandwidth -- the same figure lib/SpectrumSweep uses for Wide.
-static uint16_t LinkBandwidthKhz()
-{
-#if defined(RADIO_SX127X)
-    return 500;
-#elif defined(RADIO_LR1121)
-    // DualBand counts as sub-GHz here: radio 1 is configured from bw/sf/cr and
-    // radio 2 from bw2/sf2/cr2 (rx_main.cpp), so the chain this frame reports is
-    // the 500 kHz sub-GHz one -- and it is the only one reported, because
-    // HandleFHSS invalidates chan2 when the two radios sit in different bands.
-    const uint8_t rt = ExpressLRS_currAirRate_Modparams->radio_type;
-    return (RadioBandMod::isB900(rt) || RadioBandMod::isBDUAL(rt)) ? 500 : 812;
-#else // RADIO_SX128X
-    return 812;
-#endif
-}
-
 static void EmitFrame(const surveySample_t *const samples, const uint8_t count,
                       const uint16_t dropped)
 {
@@ -326,11 +261,11 @@ static void EmitFrame(const surveySample_t *const samples, const uint8_t count,
     info.seq = frameSeq++;
     info.reqOffsetQus = (uint8_t)(reqOffsetUs / SURVEY_OFFSET_QUANTUM_US);
     info.enumRate = ExpressLRS_currAirRate_Modparams->enum_rate;
-    info.bwKhz = LinkBandwidthKhz();
+    info.bwKhz = SurveyLinkBandwidthKhz();
     info.lnaGainDb = lnaGainDb;
     info.dropped = dropped;
     info.sampleCount = count;
-    FillAxis(&info);
+    SurveyFillAxis(&info);
 
     const uint8_t len = SurveyEncodeFrame(buf + sizeof(crsf_ext_header_t), samples, &info);
     if (len == 0)
