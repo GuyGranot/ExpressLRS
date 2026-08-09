@@ -12,6 +12,10 @@
 #include "devRxSpectrum.h"
 #endif
 
+#if defined(DEBUG_RF_SURVEY)
+#include "devRxSurvey.h"
+#endif
+
 extern void reset_into_bootloader();
 
 RXEndpoint::RXEndpoint()
@@ -58,6 +62,20 @@ bool RXEndpoint::handleRaw(const crsf_header_t *message)
             RxSpectrumStart(payload[2],
                             (message->frame_size >= 6) ? payload[3] : rbwWide,
                             (message->frame_size >= 7) && payload[4] != 0);
+            return true;
+        }
+#endif
+#if defined(DEBUG_RF_SURVEY)
+        // dest=s src=f -> the RF survey's bench hooks: payload[2] toggles the
+        // 0x83 stream, optional payload[3] also sets the survey mode. Volatile.
+        if (payload[0] == 's' && payload[1] == 'f' && message->frame_size >= 5)
+        {
+            RxSurveyBenchStream(payload[2] != 0);
+            if (message->frame_size >= 6)
+            {
+                RxSurveySetMode(payload[3]);
+            }
+            RxSurveySendStatus();
             return true;
         }
 #endif
