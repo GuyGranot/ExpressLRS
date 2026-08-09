@@ -76,6 +76,13 @@
 # These debugging options send extra information to BetaFlight in the LinkStatistics packet
 #-DDEBUG_BF_LINK_STATS
 
+# In-flight passive RF survey: samples noise-floor RSSI on the FHSS channels the live link
+# visits and exports one sample per link-statistics frame in the unused downlink fields,
+# which Betaflight logs as debug[0..2] with `set debug_mode = CRSF_LINK_STATISTICS_DOWN`.
+# Armed from the ELRS Lua script, off at every boot, levels uncalibrated. ESP32 receivers
+# only, untested on SX127x; incompatible with DEBUG_BF_LINK_STATS.
+#-DDEBUG_RF_SURVEY
+
 # Prints a log line for every channels packet received at the RX:
 #    ID,Antenna,RSSI,LQ,SNR,PWR,FHSS,TimingOffset
 # The ID is generated on the TX side and overwrites CH1-CH4 and increments once for every
