@@ -15,6 +15,8 @@
 
 #include <stdint.h>
 
+#include "device.h"
+
 #if defined(DEBUG_RF_SURVEY)
 
 #if defined(DEBUG_BF_LINK_STATS)
@@ -63,5 +65,18 @@ void RxSurveyPublish();
 
 /** Link-stats cadence: 40 ms while armed (25 Hz), the caller's default otherwise. */
 uint32_t RxSurveyLinkStatsInterval(uint32_t defaultIntervalMs);
+
+/**
+ * Turn the 0x83 bench stream on or off (the 'sf' serial command). While on AND
+ * armed, every staged sample is also emitted in full fidelity over the FC UART
+ * so the bench tool can validate the sampler without a Blackbox. Off at boot
+ * and cleared by SetMode(Off); a flight never asks, so a flight never pays.
+ */
+void RxSurveyBenchStream(bool on);
+
+/** Emit the status frame (mode, export interval, worst tock us, coverage generation). */
+void RxSurveySendStatus();
+
+extern device_t RxSurvey_device;
 
 #endif // DEBUG_RF_SURVEY

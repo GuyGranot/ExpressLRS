@@ -7,12 +7,16 @@
 #include "common.h"
 #include "logging.h"
 #include "crsf_protocol.h"
+#include "CRSFRouter.h"
 #include "FHSS.h"
 #include "LBT.h"
 #include "LQCALC.h"
 #include "OTA.h"
+#include "RXOTAConnector.h"
 // NB: no #include "hardware.h" -- it has no include guard and arrives via
 // common.h -> targets.h. Including it directly is a redefinition error.
+
+#include <string.h>
 
 // Owned by rx_main.cpp. Read directly: the hook runs inside the tock ISR, which
 // on ESP32 cannot be preempted by the RXdone ISR that writes some of these.
@@ -21,6 +25,15 @@ extern uint8_t uplinkLQ;
 extern uint8_t antenna;
 extern uint8_t geminiMode;
 extern LQCALC<100> LQCalc;
+extern RXOTAConnector otaConnector; // the source to exclude when routing to serial
+
+// Checked here rather than in the native suite so it fires on every firmware
+// build against the real CRSF constants.
+static_assert(sizeof(crsf_ext_header_t) + SURVEY_MAX_PAYLOAD_BYTES + CRSF_FRAME_CRC_SIZE
+                  <= CRSF_MAX_PACKET_LEN,
+              "survey frame exceeds CRSF_MAX_PACKET_LEN");
+static_assert(SURVEY_MAX_PAYLOAD_BYTES <= CRSF_PAYLOAD_SIZE_MAX,
+              "survey payload exceeds CRSF_PAYLOAD_SIZE_MAX");
 
 #define RX_SURVEY_MIN_LQ 70 // below this the link is already struggling
 
@@ -65,6 +78,29 @@ static uint32_t lastStageUs;
 // Worst-case time the hook has added to a tock, for the link A/B soak. The
 // budget it is judged against is PACKET_TO_TOCK_SLACK (200us).
 static volatile uint16_t worstTockUs;
+
+/*
+ * The bench stream. While a host asks for it (the 'sf' serial command), every
+ * staged sample also goes into this SPSC ring in full fidelity, and the device
+ * timeout() drains it into 0x83 vendor frames, so the bench tool can validate
+ * the sampler against the 3-byte transport byte for byte. A flight never asks,
+ * so a flight never spends UART on it.
+ */
+#define RX_SURVEY_RING_SLOTS 8 // power of two; 25 Hz in, 20 ms drain out
+#define RX_SURVEY_RING_MASK (RX_SURVEY_RING_SLOTS - 1)
+#define RX_SURVEY_DRAIN_INTERVAL_MS 20
+#define RX_SURVEY_HEARTBEAT_INTERVAL_MS 500
+#define RX_SURVEY_STATUS_INTERVAL_MS 1000
+#define RX_SURVEY_IDLE_POLL_MS 500
+
+static surveySample_t ring[RX_SURVEY_RING_SLOTS];
+static volatile uint8_t ringHead; // written by the tock ISR only
+static volatile uint8_t ringTail; // written by loop() only
+static volatile uint16_t droppedSamples;
+static volatile bool benchStream; // off at boot; cleared by SetMode(OFF)
+static uint8_t frameSeq;
+static uint32_t lastEmitMs;
+static uint32_t lastStatusMs;
 
 static int8_t ICACHE_RAM_ATTR readRssiInst(const SX12XX_Radio_Number_t radio)
 {
@@ -136,9 +172,12 @@ void RxSurveySetMode(uint8_t mode)
     coverageGen = 0;
     lastRadioType = 0xFF; // the hook re-derives the maps on its first entry
     worstTockUs = 0;
+    ringTail = ringHead; // drop samples measured under the previous mode
+    droppedSamples = 0;
 
     if (mode == RX_SURVEY_OFF)
     {
+        benchStream = false;
         // Restore the stock frame content (constant zeros on a receiver).
         linkStats.downlink_RSSI_1 = 0;
         linkStats.downlink_Link_quality = 0;
@@ -332,13 +371,14 @@ void ICACHE_RAM_ATTR RxSurveyTock()
     }
 
     const bool packetThisPeriod = LQCalc.currentIsSet();
+    // Valid only when a packet actually arrived this period -- the Last* values
+    // hold stale readings otherwise.
+    const bool packetOnRadio2 = packetThisPeriod &&
+                                (Radio.GetProcessingPacketRadio() == SX12XX_Radio_2);
 #if defined(RADIO_SX128X)
     if (packetThisPeriod)
     {
-        // The raw per-packet value, valid only when a packet actually arrived
-        // this period -- LastPacketRSSI holds a stale reading otherwise.
-        const int8_t pktRssi = (Radio.GetProcessingPacketRadio() == SX12XX_Radio_2)
-                                   ? Radio.LastPacketRSSI2 : Radio.LastPacketRSSI;
+        const int8_t pktRssi = packetOnRadio2 ? Radio.LastPacketRSSI2 : Radio.LastPacketRSSI;
         if (pktRssi > RX_SURVEY_PACKET_RSSI_GATE)
         {
             return; // AGC still holds the packet's gain; the window stays open
@@ -399,6 +439,29 @@ void ICACHE_RAM_ATTR RxSurveyTock()
     stagedWord = (uint32_t)bytes[0] | ((uint32_t)bytes[1] << 8) | ((uint32_t)bytes[2] << 16);
     lastStageUs = t0;
 
+    if (benchStream)
+    {
+        // Full-fidelity copy of the same sample for the 0x83 bench stream, so
+        // the host can check the two transports agree byte for byte.
+        const uint8_t head = ringHead;
+        const uint8_t next = (uint8_t)((head + 1) & RX_SURVEY_RING_MASK);
+        if (next == ringTail)
+        {
+            droppedSamples++;
+        }
+        else
+        {
+            surveySample_t *const s = &ring[head];
+            s->chan1 = sample1 ? chanR1 : SURVEY_CHAN_INVALID;
+            s->chan2 = !sample2 ? SURVEY_CHAN_INVALID : (dualBandRate ? chanS : chanR2);
+            s->rssi1 = rssi1;
+            s->rssi2 = rssi2;
+            s->flags = (uint8_t)((packetOnRadio2 ? SURVEY_SFLAG_PACKET_ON_RADIO2 : 0) |
+                                 (packetThisPeriod ? 0 : SURVEY_SFLAG_CLEAN));
+            ringHead = next;
+        }
+    }
+
     if (sample1)
     {
         markChan(covered1, &coveredCount1, chanR1);
@@ -428,5 +491,183 @@ void ICACHE_RAM_ATTR RxSurveyTock()
         worstTockUs = (uint16_t)dt;
     }
 }
+
+/*
+ * Loop half: the bench stream's drain and the status/heartbeat frames. All of
+ * it idles at a slow poll unless a host has asked for the stream.
+ */
+
+// One band's config -> one axis. FREQ_HZ_TO_REG_VAL is the identity on LR1121
+// (register values are Hz); the other families store register units.
+static void axisFromConfig(const fhss_config_t *const cfg, const uint32_t spread,
+                           uint32_t *const startKhz, uint16_t *const stepKhz)
+{
+#if defined(RADIO_LR1121)
+    *startKhz = cfg->freq_start / 1000;
+    *stepKhz = (uint16_t)((spread / FREQ_SPREAD_SCALE) / 1000);
+#else
+    *startKhz = (uint32_t)(((double)cfg->freq_start * FREQ_STEP / 1000.0) + 0.5);
+    *stepKhz = (uint16_t)((((double)spread / FREQ_SPREAD_SCALE) * FREQ_STEP / 1000.0) + 0.5);
+#endif
+}
+
+// The channel axes, computed exactly as SpectrumSweep::ComputeAxis does -- the
+// two must agree to the kHz or a per-channel join between a survey and a sweep
+// compares different frequencies. Leaves the second axis at 0 unless dual-band.
+static void fillAxis(surveyFrameInfo_t *const info)
+{
+    const bool primary = FHSSusePrimaryFreqBand;
+    const fhss_config_t *const cfg = primary ? FHSSconfig : FHSSconfigDualBand;
+    axisFromConfig(cfg, primary ? freq_spread : freq_spread_DualBand,
+                   &info->startFreqKhz, &info->stepKhz);
+    info->channelCount = (uint8_t)cfg->freq_count;
+
+    if (FHSSuseDualBand)
+    {
+        // Cross-band link: radio 1 hops the primary (sub-GHz) grid above, radio
+        // 2 hops this one, both off the same sequence pointer.
+        axisFromConfig(FHSSconfigDualBand, freq_spread_DualBand,
+                       &info->startFreqKhz2, &info->stepKhz2);
+        info->channelCount2 = (uint8_t)FHSSconfigDualBand->freq_count;
+    }
+}
+
+// The live link's own sensing bandwidth in kHz. Only meaningful on a LoRa rate,
+// where every rate in a band shares the band's widest bandwidth -- the same
+// figure the spectrum sweep uses for its wide RBW.
+static uint16_t linkBandwidthKhz()
+{
+#if defined(RADIO_SX127X)
+    return 500;
+#elif defined(RADIO_LR1121)
+    // DualBand counts as sub-GHz here: the bandwidth this reports is the
+    // primary (sub-GHz) chain's, and the second band's 812 kHz is implied by
+    // the second axis being present.
+    const uint8_t rt = ExpressLRS_currAirRate_Modparams->radio_type;
+    return (RadioBandMod::isB900(rt) || RadioBandMod::isBDUAL(rt)) ? 500 : 812;
+#else // RADIO_SX128X
+    return 812;
+#endif
+}
+
+// Stamp the vendor-frame header and CRC on buf (payload already written past
+// the extended header) and route it out the FC UART. Loop context.
+static void sendVendorFrame(uint8_t *const buf, const uint8_t payloadLen)
+{
+    crsfRouter.SetExtendedHeaderAndCrc((crsf_ext_header_t *)buf,
+                                       CRSF_FRAMETYPE_ELRS_VENDOR,
+                                       CRSF_EXT_FRAME_SIZE(payloadLen),
+                                       CRSF_ADDRESS_FLIGHT_CONTROLLER,
+                                       CRSF_ADDRESS_CRSF_RECEIVER);
+    crsfRouter.deliverMessage(&otaConnector, (crsf_header_t *)buf);
+}
+
+// Build and send one data (or sample-less heartbeat) frame; rate, bandwidth and
+// the channel axes are read from the live link. Loop context.
+static void emitDataFrame(const uint8_t flags, const surveySample_t *const samples,
+                          const uint8_t count, const uint16_t dropped)
+{
+    uint8_t buf[sizeof(crsf_ext_header_t) + SURVEY_MAX_PAYLOAD_BYTES + CRSF_FRAME_CRC_SIZE];
+
+    surveyFrameInfo_t info;
+    memset(&info, 0, sizeof(info));
+    info.flags = flags;
+    info.seq = frameSeq++;
+    info.enumRate = ExpressLRS_currAirRate_Modparams->enum_rate;
+    info.bwKhz = linkBandwidthKhz();
+    info.lnaGainDb = lnaGainDb;
+    info.dropped = dropped;
+    info.sampleCount = count;
+    fillAxis(&info);
+
+    const uint8_t len = SurveyEncodeFrame(buf + sizeof(crsf_ext_header_t), samples, &info);
+    if (len != 0)
+    {
+        sendVendorFrame(buf, len);
+    }
+}
+
+void RxSurveySendStatus()
+{
+    uint8_t buf[sizeof(crsf_ext_header_t) + SURVEY_STATUS_PAYLOAD_BYTES + CRSF_FRAME_CRC_SIZE];
+    uint8_t *const payload = buf + sizeof(crsf_ext_header_t);
+    const uint16_t worst = worstTockUs; // aligned 16-bit read, atomic on ESP32
+    payload[0] = SURVEY_SUBTYPE_STATUS;
+    payload[1] = SURVEY_PROTO_VERSION;
+    payload[2] = surveyMode; // 0 = disarmed
+    payload[3] = (surveyMode != RX_SURVEY_OFF) ? RX_SURVEY_EXPORT_INTERVAL_MS : 0;
+    payload[4] = (uint8_t)(worst >> 8);
+    payload[5] = (uint8_t)worst;
+    payload[6] = coverageGen;
+    sendVendorFrame(buf, SURVEY_STATUS_PAYLOAD_BYTES);
+}
+
+void RxSurveyBenchStream(const bool on)
+{
+    ringTail = ringHead; // both stream edges start from an empty ring
+    droppedSamples = 0;
+    lastEmitMs = 0;
+    benchStream = on;
+    DBGLN("Survey: bench stream %s", on ? "on" : "off");
+}
+
+static int start()
+{
+    return RX_SURVEY_IDLE_POLL_MS;
+}
+
+static int timeout()
+{
+    if (!benchStream || surveyMode == RX_SURVEY_OFF)
+    {
+        return RX_SURVEY_IDLE_POLL_MS;
+    }
+
+    // Copy out under a brief critical section: droppedSamples is
+    // read-and-cleared, and the sample block must match the tail advance.
+    surveySample_t batch[SURVEY_MAX_SAMPLES_PER_FRAME];
+    uint8_t count = 0;
+    uint16_t dropped;
+
+    noInterrupts();
+    uint8_t tail = ringTail;
+    while (count < SURVEY_MAX_SAMPLES_PER_FRAME && tail != ringHead)
+    {
+        batch[count++] = ring[tail];
+        tail = (uint8_t)((tail + 1) & RX_SURVEY_RING_MASK);
+    }
+    ringTail = tail;
+    dropped = droppedSamples;
+    droppedSamples = 0;
+    interrupts();
+
+    const uint32_t now = millis();
+    // dropped != 0 implies count > 0: samples are only dropped against a full
+    // ring, and only this drain empties it -- so a nonzero drop count always
+    // rides out on a data frame and never needs folding back.
+    if (count > 0 || (uint32_t)(now - lastEmitMs) >= RX_SURVEY_HEARTBEAT_INTERVAL_MS)
+    {
+        emitDataFrame((uint8_t)(evaluateGates() |
+                                (isDualRadio() ? SURVEY_FLAG_DUAL_RADIO : 0)),
+                      count > 0 ? batch : nullptr, count, dropped);
+        lastEmitMs = now;
+    }
+
+    if ((uint32_t)(now - lastStatusMs) >= RX_SURVEY_STATUS_INTERVAL_MS)
+    {
+        RxSurveySendStatus();
+        lastStatusMs = now;
+    }
+
+    return RX_SURVEY_DRAIN_INTERVAL_MS;
+}
+
+device_t RxSurvey_device = {
+    .initialize = nullptr,
+    .start = start,
+    .event = nullptr,
+    .timeout = timeout,
+    .subscribe = EVENT_NONE,
+};
 
 #endif // DEBUG_RF_SURVEY
