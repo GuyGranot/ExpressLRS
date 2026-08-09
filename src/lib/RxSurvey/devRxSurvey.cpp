@@ -145,6 +145,32 @@ static void ICACHE_RAM_ATTR markChan(uint32_t *const map, uint8_t *const count, 
     }
 }
 
+// Effective per-band geometry. With the FHSS band subset compiled in the link
+// may hop a shifted, reduced domain on the same grid, and the axis and the
+// coverage counts must describe that domain; without it these fold back to the
+// raw band values.
+#if defined(USE_FHSS_SUBSET)
+static uint_fast8_t bandOffset(const bool primary)
+{
+    return primary ? subset_offset : subset_offset_DualBand;
+}
+
+static uint8_t ICACHE_RAM_ATTR bandCount(const bool primary)
+{
+    return (uint8_t)(primary ? effective_freq_count : effective_freq_count_DualBand);
+}
+#else
+static uint_fast8_t bandOffset(const bool)
+{
+    return 0;
+}
+
+static uint8_t ICACHE_RAM_ATTR bandCount(const bool primary)
+{
+    return (uint8_t)((primary ? FHSSconfig : FHSSconfigDualBand)->freq_count);
+}
+#endif
+
 static void ICACHE_RAM_ATTR resetCoverage()
 {
     for (uint8_t i = 0; i < RX_SURVEY_COVERAGE_BITS / 32; i++)
@@ -154,9 +180,8 @@ static void ICACHE_RAM_ATTR resetCoverage()
     }
     coveredCount1 = 0;
     coveredCount2 = 0;
-    const fhss_config_t *const cfg = FHSSusePrimaryFreqBand ? FHSSconfig : FHSSconfigDualBand;
-    chanCount1 = (uint8_t)cfg->freq_count;
-    chanCount2 = FHSSuseDualBand ? (uint8_t)FHSSconfigDualBand->freq_count : 0;
+    chanCount1 = bandCount(FHSSusePrimaryFreqBand);
+    chanCount2 = FHSSuseDualBand ? bandCount(false) : 0;
 }
 
 void RxSurveySetMode(uint8_t mode)
@@ -280,10 +305,11 @@ void ICACHE_RAM_ATTR RxSurveyTock()
         return;
     }
 
-    if (rt != lastRadioType)
+    if (rt != lastRadioType || chanCount1 != bandCount(FHSSusePrimaryFreqBand))
     {
-        // First armed tock, or a mid-flight rate change (which reconnects, and on
-        // an LR1121 can move between bands): re-derive the maps from the live FHSS.
+        // First armed tock, a mid-flight rate change (which reconnects, and on
+        // an LR1121 can move between bands), or a sequence rebuild that resized
+        // the effective domain: re-derive the maps from the live FHSS.
         lastRadioType = rt;
         resetCoverage();
     }
@@ -498,37 +524,43 @@ void ICACHE_RAM_ATTR RxSurveyTock()
  */
 
 // One band's config -> one axis. FREQ_HZ_TO_REG_VAL is the identity on LR1121
-// (register values are Hz); the other families store register units.
+// (register values are Hz); the other families store register units. offset is
+// the effective domain's first raw-grid channel, summed in register units the
+// way the hop maths sums it.
 static void axisFromConfig(const fhss_config_t *const cfg, const uint32_t spread,
+                           const uint_fast8_t offset,
                            uint32_t *const startKhz, uint16_t *const stepKhz)
 {
+    const uint32_t start = cfg->freq_start + (offset * spread / FREQ_SPREAD_SCALE);
 #if defined(RADIO_LR1121)
-    *startKhz = cfg->freq_start / 1000;
+    *startKhz = start / 1000;
     *stepKhz = (uint16_t)((spread / FREQ_SPREAD_SCALE) / 1000);
 #else
-    *startKhz = (uint32_t)(((double)cfg->freq_start * FREQ_STEP / 1000.0) + 0.5);
+    *startKhz = (uint32_t)(((double)start * FREQ_STEP / 1000.0) + 0.5);
     *stepKhz = (uint16_t)((((double)spread / FREQ_SPREAD_SCALE) * FREQ_STEP / 1000.0) + 0.5);
 #endif
 }
 
 // The channel axes, computed exactly as SpectrumSweep::ComputeAxis does -- the
 // two must agree to the kHz or a per-channel join between a survey and a sweep
-// compares different frequencies. Leaves the second axis at 0 unless dual-band.
+// compares different frequencies. Under a band subset the axis is the effective
+// domain (shifted start, reduced count, same grid), so the join still lands on
+// the sweep's bins. Leaves the second axis at 0 unless dual-band.
 static void fillAxis(surveyFrameInfo_t *const info)
 {
     const bool primary = FHSSusePrimaryFreqBand;
     const fhss_config_t *const cfg = primary ? FHSSconfig : FHSSconfigDualBand;
-    axisFromConfig(cfg, primary ? freq_spread : freq_spread_DualBand,
+    axisFromConfig(cfg, primary ? freq_spread : freq_spread_DualBand, bandOffset(primary),
                    &info->startFreqKhz, &info->stepKhz);
-    info->channelCount = (uint8_t)cfg->freq_count;
+    info->channelCount = bandCount(primary);
 
     if (FHSSuseDualBand)
     {
         // Cross-band link: radio 1 hops the primary (sub-GHz) grid above, radio
         // 2 hops this one, both off the same sequence pointer.
-        axisFromConfig(FHSSconfigDualBand, freq_spread_DualBand,
+        axisFromConfig(FHSSconfigDualBand, freq_spread_DualBand, bandOffset(false),
                        &info->startFreqKhz2, &info->stepKhz2);
-        info->channelCount2 = (uint8_t)FHSSconfigDualBand->freq_count;
+        info->channelCount2 = bandCount(false);
     }
 }
 

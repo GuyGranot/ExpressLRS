@@ -53,7 +53,8 @@
  *   [4]      enum_rate of the live link (comparable across targets; index is not)
  *   [5:6]    link sensing bandwidth, kHz, big endian
  *   [7]      power_lna_gain in dB (int8), already subtracted from every RSSI below
- *   [8]      channel count of the active FHSS domain
+ *   [8]      channel count of the effective FHSS domain (a configured band
+ *            subset shifts channel 0 and shrinks this count)
  *   [9:12]   centre frequency of channel 0, kHz, big endian
  *   [13:14]  spacing between channel centres, kHz, big endian
  *   [15:18]  centre frequency of channel 0 in the SECOND band, kHz, big endian,

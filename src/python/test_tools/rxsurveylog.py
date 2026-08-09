@@ -14,6 +14,10 @@ entry-point bug in recent pip; install with
     python -m zipfile -e /tmp/obx/orangebox-*.whl <somewhere on sys.path>
 or run with PYTHONPATH pointing at an extracted copy.
 
+A link flying an FHSS band subset logs subset-local channel indices; pass
+--subset-900 / --subset-2g4 with the subset's first full-grid channel so they
+map back to true frequencies.
+
 Levels carry the survey's standing caveat: antenna-referred via
 power_lna_gain, uncalibrated in absolute terms.
 """
@@ -214,8 +218,14 @@ def pct(vals, p):
     return vals[min(len(vals) - 1, int(p * len(vals)))]
 
 
-def freq_mhz(band, chan, grid900):
-    start, step, _ = GRID_2G4 if band == "2.4" else grid900
+def subset_grid(grid, first_chan):
+    """Shift a full-band grid to a subset's effective domain (same spacing)."""
+    start, step, count = grid
+    return (start + first_chan * step, step, count - first_chan)
+
+
+def freq_mhz(band, chan, grids):
+    start, step, _ = grids[1] if band == "2.4" else grids[0]
     return start + chan * step
 
 
@@ -230,7 +240,7 @@ def channel_table(rows):
     return by_chan
 
 
-def report_segment(samples, meta, grid900, min_samples, out):
+def report_segment(samples, meta, grids, min_samples, out):
     p = out.append
     p("  frames %d, %.0f s, %d survey samples (%.1f Hz staging)"
       % (meta["frames"], meta["duration"], len(samples),
@@ -252,7 +262,7 @@ def report_segment(samples, meta, grid900, min_samples, out):
         hot = sorted(((pct(v, 0.5), c) for c, v in by_chan.items()
                       if len(v) >= min_samples), reverse=True)[:5]
         p("    hottest medians: " + ", ".join(
-            "%.1f MHz %d dBm (n=%d)" % (freq_mhz(band, c, grid900), m, len(by_chan[c]))
+            "%.1f MHz %d dBm (n=%d)" % (freq_mhz(band, c, grids), m, len(by_chan[c]))
             for m, c in hot))
         clean = [s["rssi"] for s in rows if s["clean"]]
         dirty = [s["rssi"] for s in rows if not s["clean"]]
@@ -286,7 +296,7 @@ def report_segment(samples, meta, grid900, min_samples, out):
             p("    floor median by %s quartile: %s dBm" % (label, "; ".join(line)))
 
 
-def plot_segment(samples, meta, grid900, tag, plot_dir, min_samples):
+def plot_segment(samples, meta, grids, tag, plot_dir, min_samples):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -296,7 +306,7 @@ def plot_segment(samples, meta, grid900, tag, plot_dir, min_samples):
     for ax, band in zip((a for row in axs for a in row), bands):
         by_chan = channel_table(band_rows(samples, band))
         chans = sorted(c for c, v in by_chan.items() if len(v) >= min_samples)
-        f = [freq_mhz(band, c, grid900) for c in chans]
+        f = [freq_mhz(band, c, grids) for c in chans]
         ax.fill_between(f, [pct(by_chan[c], 0.1) for c in chans],
                         [pct(by_chan[c], 0.9) for c in chans], alpha=0.25)
         ax.plot(f, [pct(by_chan[c], 0.5) for c in chans], marker=".", lw=1.2)
@@ -325,13 +335,18 @@ def main():
                     help="sub-GHz FHSS domain for the channel axis (default fcc_915)")
     ap.add_argument("--single-band", action="store_true",
                     help="single-band link: bit 7 is the antenna/Gemini assignment, not a band bit")
+    ap.add_argument("--subset-900", type=int, default=0, metavar="CHAN",
+                    help="first full-grid channel of the sub-GHz band subset the link flew (default 0 = no subset)")
+    ap.add_argument("--subset-2g4", type=int, default=0, metavar="CHAN",
+                    help="same for the 2.4 band")
     ap.add_argument("--min-samples", type=int, default=3,
                     help="minimum samples per channel for tables/plots (default 3)")
     ap.add_argument("--plot-dir", metavar="DIR", help="write a spectrum PNG per session")
     ap.add_argument("--export", metavar="JSONL",
                     help="write all deduped samples (with context) to one JSONL")
     args = ap.parse_args()
-    grid900 = SUBGHZ_GRIDS[args.domain]
+    grids = (subset_grid(SUBGHZ_GRIDS[args.domain], args.subset_900),
+             subset_grid(GRID_2G4, args.subset_2g4))
 
     exported = open(args.export, "w") if args.export else None
     seg_no = 0
@@ -353,10 +368,10 @@ def main():
             print("  no survey samples (survey disarmed, or wrong debug_mode)")
             continue
         out = []
-        report_segment(samples, meta, grid900, args.min_samples, out)
+        report_segment(samples, meta, grids, args.min_samples, out)
         print("\n".join(out))
         if args.plot_dir:
-            print("  plot: " + plot_segment(samples, meta, grid900, tag,
+            print("  plot: " + plot_segment(samples, meta, grids, tag,
                                             args.plot_dir, args.min_samples))
         if exported:
             for s in samples:
