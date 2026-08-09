@@ -89,7 +89,8 @@ typedef enum : uint8_t
     CRSF_FRAMETYPE_ARDUPILOT_RESP = 0x80,
     // PROVISIONAL, unregistered vendor type beside mLRS 0x81/0x82 and sharing their
     // shape: one type, sub-type in payload[0]. Sub-types: 0x01 spectrum sweep
-    // (lib/SpectrumSweep/SpectrumProtocol.h), 0x02 scan-trigger status from the receiver.
+    // (lib/SpectrumSweep/SpectrumProtocol.h), 0x02 scan-trigger status from the receiver,
+    // 0x03 RF survey samples (lib/RxSurvey/SurveyProtocol.h), 0x04 survey status.
     CRSF_FRAMETYPE_ELRS_VENDOR = 0x83,
 } crsf_frame_type_e;
 
