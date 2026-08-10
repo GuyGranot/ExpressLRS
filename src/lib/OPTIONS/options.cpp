@@ -1,5 +1,6 @@
 #include "options.h"
 
+#include "fhss_subset.h"
 #include "logging.h"
 
 #define QUOTE(arg) #arg
@@ -86,12 +87,39 @@ void saveOptions(Stream &stream, bool customised)
     #endif
     doc["is-airport"] = firmwareOptions.is_airport;
     doc["domain"] = firmwareOptions.domain;
+    #if defined(USE_FHSS_SUBSET)
+    doc["fhss-subset-subghz-start"] = firmwareOptions.fhss_subset[FHSS_BAND_SUBGHZ].start;
+    doc["fhss-subset-subghz-count"] = firmwareOptions.fhss_subset[FHSS_BAND_SUBGHZ].count;
+    doc["fhss-subset-2g4-start"] = firmwareOptions.fhss_subset[FHSS_BAND_2G4].start;
+    doc["fhss-subset-2g4-count"] = firmwareOptions.fhss_subset[FHSS_BAND_2G4].count;
+    #endif
     doc["customised"] = customised;
     doc["flash-discriminator"] = firmwareOptions.flash_discriminator;
 
     serializeJson(doc, stream);
     builtinOptions.clear();
     serializeJson(doc, builtinOptions);
+}
+
+static bool optionsDirty = false;
+
+void saveOptionsDeferred()
+{
+    optionsDirty = true;
+}
+
+bool optionsSavePending()
+{
+    return optionsDirty;
+}
+
+void saveOptionsIfPending()
+{
+    if (optionsDirty)
+    {
+        optionsDirty = false;
+        saveOptions();
+    }
 }
 
 void saveOptions()
@@ -115,6 +143,28 @@ bool options_HasStringInFlash(EspFlashStream &strmFlash)
 
     return firstBytes != 0xffffffff;
 }
+
+#if defined(USE_FHSS_SUBSET)
+/**
+ * @brief:  Load one band's FHSS subset pair with structural validation only
+ *          (range and minimum count); the actual domain channel count is
+ *          enforced at FHSS init, which falls back to full band if the subset
+ *          does not fit the active domain
+ */
+static void options_LoadSubset(JsonDocument &doc, fhss_band_e band,
+                               const char *startKey, const char *countKey)
+{
+    uint32_t start = doc[startKey] | 0U;
+    uint32_t count = doc[countKey] | 0U;
+    if (count == 0 || !FHSSsubsetIsValid(start, count, FHSS_SUBSET_MAX_CHANNELS))
+    {
+        start = 0;
+        count = 0;
+    }
+    firmwareOptions.fhss_subset[band].start = start;
+    firmwareOptions.fhss_subset[band].count = count;
+}
+#endif
 
 /**
  * @brief:  Internal read options from either the flash stream at the end of the sketch or the options.json file
@@ -201,6 +251,12 @@ static void options_LoadFromFlashOrFile(EspFlashStream &strmFlash)
     firmwareOptions.dji_permanently_armed = doc["dji-permanently-armed"] | false;
     #endif
     firmwareOptions.domain = doc["domain"] | 0;
+
+    #if defined(USE_FHSS_SUBSET)
+    options_LoadSubset(doc, FHSS_BAND_SUBGHZ, "fhss-subset-subghz-start", "fhss-subset-subghz-count");
+    options_LoadSubset(doc, FHSS_BAND_2G4, "fhss-subset-2g4-start", "fhss-subset-2g4-count");
+    #endif
+
     firmwareOptions.flash_discriminator = doc["flash-discriminator"] | 0U;
 
     builtinOptions.clear();

@@ -83,16 +83,26 @@ struct floatParameter
     propertiesCommon common;
     struct
     {
-        // value, min, max, and def are all signed, but stored as BE unsigned
+        // value, min, max, and def are all signed, but stored as BE unsigned.
+        // Unlike every other parameter's, min/max/step are not const: this is
+        // the first parameter whose range and increment come from the live
+        // configuration rather than the declaration, so setFloatRange()
+        // restates them at each refresh. That is filterOptions() for a numeric
+        // field, and where setInt16Range() would go.
         uint32_t value;
-        const uint32_t min;
-        const uint32_t max;
+        uint32_t min;
+        uint32_t max;
         const uint32_t def; // default value
         const uint8_t precision;
-        const uint32_t step;
+        uint32_t step;
     } PACKED properties;
     const char *const units;
 } PACKED;
+
+// The handset reads value/min/max/def at offsets 0/4/8/12, the precision at 16
+// and the step at 17, with the units string starting at 21 (fieldFloatLoad in
+// elrs.lua). Padding this apart would send a silently different field.
+static_assert(sizeof(decltype(floatParameter::properties)) == 21, "float parameter properties must stay packed");
 
 struct stringParameter
 {
@@ -135,6 +145,10 @@ typedef std::function<void(propertiesCommon *item, int32_t arg)> parameterHandle
 uint8_t findSelectionLabel(const selectionParameter *parameter, char *outArray, uint8_t value);
 
 constexpr char STR_EMPTYSPACE[1] = {};
+
+// The options string of every plain on/off selection. Here rather than in one
+// endpoint's parameter file because both endpoints now build parameters.
+constexpr char STR_OFF_ON[] = "Off;On";
 
 #define LUASYM_ARROW_UP "\xc0"
 #define LUASYM_ARROW_DN "\xc1"

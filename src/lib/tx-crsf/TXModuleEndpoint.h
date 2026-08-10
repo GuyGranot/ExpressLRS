@@ -1,6 +1,7 @@
 #ifndef TX_MODULE_ENDPOINT_H
 #define TX_MODULE_ENDPOINT_H
 #include "RxTxEndpoint.h"
+#include "config_modelext.h"
 
 enum warningFlags
 {
@@ -44,7 +45,6 @@ public:
 protected:
     void devicePingCalled() override;
     void updateModelID();
-
     void supressCriticalErrors();
     void setWarningFlag(warningFlags flag, bool value);
     void sendELRSstatus(crsf_addr_e origin);

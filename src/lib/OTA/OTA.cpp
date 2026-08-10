@@ -25,17 +25,29 @@ static Crc2Byte ota_crc;
 ValidatePacketCrc_t OtaValidatePacketCrc;
 GeneratePacketCrc_t OtaGeneratePacketCrc;
 
-void OtaUpdateCrcInitFromUid()
+void OtaUpdateCrcInit(bool binding, uint16_t geometryHash)
 {
 #if OTA_VERSION_ID > 15
 #error "OTA version can't be > 15"
 #endif
+
+    if (binding)
+    {
+        // Both ends use this before they share a binding ID
+        OtaCrcInitializer = OTA_VERSION_ID;
+        return;
+    }
 
     OtaCrcInitializer = (UID[4] << 8) | UID[5];
 
     // shift OTA_VERSION_ID to the high byte to leave room for
     // xor-ing in the nonce in the GenerateCRC and ValidateCRC function
     OtaCrcInitializer ^= (uint16_t)OTA_VERSION_ID << 8;
+
+    // A receiver hopping a different plan hears only the packets that land on a
+    // shared frequency; folding the geometry in makes those fail the CRC, so it
+    // starves and re-acquires instead of holding a link it cannot follow
+    OtaCrcInitializer ^= geometryHash;
 }
 
 uint32_t OtaGetUidSeed()

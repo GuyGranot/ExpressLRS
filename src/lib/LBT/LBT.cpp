@@ -74,7 +74,7 @@ void LbtEnableIfRequired()
 {
     LbtIsEnabled = config.GetPower() > PWR_10mW;
 #if defined(RADIO_LR1121)
-    LbtIsEnabled &= (RadioBandMod::isB2G4(ExpressLRS_currAirRate_Modparams->radio_type) || RadioBandMod::isBDUAL(ExpressLRS_currAirRate_Modparams->radio_type));
+    LbtIsEnabled &= RadioBandMod::usesB2G4(ExpressLRS_currAirRate_Modparams->radio_type);
 #endif
     validRSSIdelayUs = SpreadingFactorToRSSIvalidDelayUs(ExpressLRS_currAirRate_Modparams->sf, ExpressLRS_currAirRate_Modparams->radio_type);
 }

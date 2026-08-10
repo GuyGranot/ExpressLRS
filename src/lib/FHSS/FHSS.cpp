@@ -1,4 +1,5 @@
 #include "FHSS.h"
+#include "fhss_subset.h"
 #include "logging.h"
 #include "options.h"
 #include <string.h>
@@ -27,7 +28,7 @@ const fhss_config_t domains[] = {
     {"US433W",  FREQ_HZ_TO_REG_VAL(423500000), FREQ_HZ_TO_REG_VAL(438000000), 20, 434000000},
 };
 
-#if defined(RADIO_LR1121)
+#if defined(FHSS_HAS_DUAL_BAND)
 const fhss_config_t domainsDualBand[] = {
     {
     #if defined(Regulatory_Domain_EU_CE_2400)
@@ -51,6 +52,14 @@ const fhss_config_t domains[] = {
     #endif
     FREQ_HZ_TO_REG_VAL(2400400000), FREQ_HZ_TO_REG_VAL(2479400000), 80, 2440000000}
 };
+
+#if defined(UNIT_TEST)
+// A synthetic secondary domain, so the native tests can reach the dual-band code
+// paths. Real dual-band hardware is LR1121-only and never compiles this arm.
+const fhss_config_t domainsDualBand[] = {
+    {"FCC915", FREQ_HZ_TO_REG_VAL(903500000), FREQ_HZ_TO_REG_VAL(926900000), 40, 915000000},
+};
+#endif
 #endif
 
 // Our table of FHSS frequencies. Define a regulatory domain to select the correct set for your location and radio
@@ -83,35 +92,317 @@ bool FHSSuseDualBand = false;
 uint16_t primaryBandCount;
 uint16_t secondaryBandCount;
 
+#if defined(USE_FHSS_SUBSET)
+// Effective (possibly subset-restricted) geometry, per band (see FHSS.h)
+bool FHSSsubsetActive;
+uint_fast8_t subset_offset;
+uint32_t effective_freq_count;
+
+#if defined(FHSS_HAS_DUAL_BAND)
+bool FHSSsubsetActive_DualBand;
+uint_fast8_t subset_offset_DualBand;
+uint32_t effective_freq_count_DualBand;
+#endif
+#endif
+
 constexpr uint8_t VERSION_DOMAIN_MAXLEN = 26 + 1;   // max. number of characters (plus '\0') the Lua script can display
                                                     // on color LCD radios w/o being overwritten by the commit info
 char version_domain[VERSION_DOMAIN_MAXLEN] {};
 
-
-void FHSSrandomiseFHSSsequence(const uint32_t seed)
+// How far apart two adjacent channels of a domain sit, in scaled register units.
+// One definition: the frequency the handset offers and the frequency the radio
+// hops to are the same grid, and this is what makes that true by construction
+// rather than by two expressions agreeing.
+static uint32_t freqSpreadFor(const fhss_config_t *config)
 {
+    return (config->freq_stop - config->freq_start) * FREQ_SPREAD_SCALE / (config->freq_count - 1);
+}
+
+#if defined(USE_FHSS_SUBSET)
+// The domain table carrying a physical band, or nullptr if this radio has no
+// such band
+static const fhss_config_t *bandDomain(fhss_band_e band)
+{
+    if (band == PRIMARY_BAND)
+    {
+        return FHSSconfig;
+    }
+#if defined(FHSS_HAS_DUAL_BAND)
+    return FHSSconfigDualBand;
+#else
+    return nullptr;
+#endif
+}
+
+// Whether the active band mode transmits on a band at all. A band it does not
+// use says nothing about the link.
+static bool bandIsOnAir(fhss_band_e band)
+{
+#if defined(FHSS_HAS_DUAL_BAND)
+    if (FHSSuseDualBand)
+    {
+        return true;
+    }
+#endif
+    return (band == PRIMARY_BAND) == FHSSusePrimaryFreqBand;
+}
+
+// Append a number, bounded like the strlcat it is built on. Only the display
+// helpers below need this; the parameter layers write their numbers at a fixed
+// offset inside a template string instead.
+static void appendNum(char *dst, uint32_t value, uint8_t maxlen)
+{
+    char num[6];
+    itoa(value, num, 10);
+    strlcat(dst, num, maxlen);
+}
+
+static uint16_t geometryCrc16(const uint8_t *data, uint8_t len)
+{
+    // CRC16-CCITT, bitwise: only six bytes to hash, too few to repay lib/CRC's
+    // 256-entry table
+    uint16_t crc = 0xFFFF;
+    while (len--)
+    {
+        crc ^= (uint16_t)(*data++) << 8;
+        for (uint8_t bit = 0; bit < 8; bit++)
+            crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : (crc << 1);
+    }
+    return crc;
+}
+
+// Hash the effective geometry of the band(s) the active mode transmits on. 0
+// when no such band runs a subset; a hash landing on zero is nudged off it,
+// since an active subset must never read as plain full band. The domain table a
+// band came from is deliberately not an input, so that two radios holding the
+// same band in different tables still agree. Derived on demand from the geometry
+// the last build left: every caller is a rate change, a binding transition or an
+// acquisition dwell, so none of them is worth a cache.
+uint16_t FHSSgetGeometryHash(void)
+{
+    const bool includePrimary = bandIsOnAir(PRIMARY_BAND);
+    const bool includeSecondary = bandIsOnAir(SECONDARY_BAND);
+    if (!(includePrimary && FHSSsubsetActive) && !(includeSecondary && FHSSsubsetActive_DualBand))
+        return 0;
+
+    uint8_t geometry[6];
+    uint8_t len = 0;
+    if (includePrimary)
+    {
+        geometry[len++] = FHSSsubsetActive;
+        geometry[len++] = subset_offset;
+        geometry[len++] = effective_freq_count;
+    }
+    if (includeSecondary)
+    {
+        geometry[len++] = FHSSsubsetActive_DualBand;
+        geometry[len++] = subset_offset_DualBand;
+        geometry[len++] = effective_freq_count_DualBand;
+    }
+    const uint16_t hash = geometryCrc16(geometry, len);
+    return hash ? hash : 0xFFFF;
+}
+
+// Only bands this radio actually has count: a sub-GHz subset left in the
+// options of a 2.4GHz-only receiver must not cost it a subset acquisition pass
+bool FHSSsubsetConfigured(void)
+{
+#if defined(FHSS_HAS_DUAL_BAND)
+    return firmwareOptions.fhss_subset[PRIMARY_BAND].count != 0
+        || firmwareOptions.fhss_subset[SECONDARY_BAND].count != 0;
+#else
+    return firmwareOptions.fhss_subset[PRIMARY_BAND].count != 0;
+#endif
+}
+
+uint32_t FHSSsubsetBandChannels(fhss_band_e band)
+{
+    const fhss_config_t *config = bandDomain(band);
+    return config ? config->freq_count : 0;
+}
+
+bool FHSSsubsetBandAxis(fhss_band_e band, uint32_t *startKhz, uint32_t *stepKhz)
+{
+    const fhss_config_t *config = bandDomain(band);
+    if (config == nullptr || config->freq_count < 2)
+    {
+        return false;
+    }
+    // the band's own table, not the freq_spread globals: those only exist after
+    // a sequence build, and this runs before the first one
+    const uint32_t spread = freqSpreadFor(config);
+    // Undo the spread scaling before the unit conversion, not after: the
+    // per-channel step is fractional in register units and truncating it there
+    // drifts by about a kHz across a 40 channel band.
+    *startKhz = (uint32_t)(REG_VAL_TO_FREQ_HZ(config->freq_start) / 1000.0 + 0.5);
+    *stepKhz = (uint32_t)(REG_VAL_TO_FREQ_HZ((double)spread / FREQ_SPREAD_SCALE) / 1000.0 + 0.5);
+    return true;
+}
+
+uint8_t FHSSsubsetChannelForKhz(fhss_band_e band, uint32_t khz)
+{
+    uint32_t startKhz, stepKhz;
+    const uint32_t channels = FHSSsubsetBandChannels(band);
+    if (channels == 0 || !FHSSsubsetBandAxis(band, &startKhz, &stepKhz) || khz <= startKhz)
+    {
+        return 0;
+    }
+    const uint32_t idx = (khz - startKhz + stepKhz / 2) / stepKhz;
+    return idx < channels ? (uint8_t)idx : (uint8_t)(channels - 1);
+}
+
+void FHSSgetBandSubset(fhss_band_e band, uint8_t *start, uint8_t *count)
+{
+    *start = firmwareOptions.fhss_subset[band].start;
+    *count = firmwareOptions.fhss_subset[band].count;
+}
+
+bool FHSSsetBandSubset(fhss_band_e band, uint8_t start, uint8_t count)
+{
+    const uint32_t channels = FHSSsubsetBandChannels(band);
+    if (channels == 0 || !FHSSsubsetIsValid(start, count, channels))
+    {
+        return false;
+    }
+    // count 0 is "full band", and carries no start
+    firmwareOptions.fhss_subset[band].start = count ? start : 0;
+    firmwareOptions.fhss_subset[band].count = count;
+    return true;
+}
+
+void FHSSdescribeSubset(fhss_band_e band, uint8_t start, uint8_t count, char *dst, uint8_t maxlen)
+{
+    const uint32_t channels = FHSSsubsetBandChannels(band);
+
+    if (channels == 0)
+    {
+        strlcpy(dst, "no band", maxlen);
+    }
+    else if (channels < FHSS_SUBSET_MIN)
+    {
+        // Nothing legal fits: EU868 has 13 channels, IN866 four, the 433 domains
+        // three. Say so rather than offering fields that can never validate.
+        strlcpy(dst, "band ", maxlen);
+        appendNum(dst, channels, maxlen);
+        strlcat(dst, "ch", maxlen);
+    }
+    else if (count == 0)
+    {
+        strlcpy(dst, "full band", maxlen);
+    }
+    else if (count < FHSS_SUBSET_MIN)
+    {
+        strlcpy(dst, "min ", maxlen);
+        appendNum(dst, FHSS_SUBSET_MIN, maxlen);
+        strlcat(dst, "ch", maxlen);
+    }
+    else if (start + count > channels)
+    {
+        strlcpy(dst, "past ", maxlen);
+        appendNum(dst, channels - 1, maxlen);
+    }
+    else
+    {
+        // The pair the far end has to match. Deliberately terse: this is drawn
+        // at COL2, which is 58px from the right-hand edge on a 128px handset,
+        // so about nine characters. The frequencies live on the From/To fields.
+        dst[0] = '\0';
+        appendNum(dst, start, maxlen);
+        strlcat(dst, "-", maxlen);
+        appendNum(dst, start + count - 1, maxlen);
+        strlcat(dst, "/", maxlen);
+        appendNum(dst, channels, maxlen);
+    }
+}
+
+
+// Compute one band's effective geometry: the options-defined subset when it is
+// requested, present, and fits this domain; the full domain otherwise. Each
+// band falls back independently.
+static bool FHSSapplySubset(const bool useSubset, const uint32_t subsetStart, const uint32_t subsetCount,
+                            const fhss_config_t *config, uint_fast8_t *offsetOut, uint32_t *countOut)
+{
+    if (useSubset && subsetCount != 0 && FHSSsubsetIsValid(subsetStart, subsetCount, config->freq_count))
+    {
+        *offsetOut = subsetStart;
+        *countOut = subsetCount;
+        return true;
+    }
+    *offsetOut = 0;
+    *countOut = config->freq_count;
+    return false;
+}
+
+// Would a rebuild that requests the subset actually restrict a band the
+// current band mode has on air? The same judgement FHSSapplySubset makes at
+// build time, made before any build, so the acquisition scan can settle its
+// phase first and build the right geometry once.
+bool FHSSsubsetWouldApply(void)
+{
+    uint_fast8_t offset;
+    uint32_t count;
+    const auto &primary = firmwareOptions.fhss_subset[PRIMARY_BAND];
+    if (bandIsOnAir(PRIMARY_BAND) &&
+        FHSSapplySubset(true, primary.start, primary.count, &domains[firmwareOptions.domain], &offset, &count))
+    {
+        return true;
+    }
+#if defined(FHSS_HAS_DUAL_BAND)
+    const auto &secondary = firmwareOptions.fhss_subset[SECONDARY_BAND];
+    if (bandIsOnAir(SECONDARY_BAND) &&
+        FHSSapplySubset(true, secondary.start, secondary.count, &domainsDualBand[0], &offset, &count))
+    {
+        return true;
+    }
+#endif
+    return false;
+}
+#endif // USE_FHSS_SUBSET
+
+void FHSSrandomiseFHSSsequence(const uint32_t seed, const bool useSubset)
+{
+    // the hop pointer indexes sequences that are about to be replaced
+    FHSSptr = 0;
+
     FHSSconfig = &domains[firmwareOptions.domain];
-    sync_channel = FHSSconfig->freq_count / 2;
-    freq_spread = (FHSSconfig->freq_stop - FHSSconfig->freq_start) * FREQ_SPREAD_SCALE / (FHSSconfig->freq_count - 1);
-    primaryBandCount = (FHSS_SEQUENCE_LEN / FHSSconfig->freq_count) * FHSSconfig->freq_count;
+    freq_spread = freqSpreadFor(FHSSconfig);
+#if defined(USE_FHSS_SUBSET)
+    const auto &primarySubset = firmwareOptions.fhss_subset[PRIMARY_BAND];
+    FHSSsubsetActive = FHSSapplySubset(useSubset, primarySubset.start, primarySubset.count,
+                                       FHSSconfig, &subset_offset, &effective_freq_count);
+    const uint32_t freqCount = effective_freq_count;
+#else
+    (void)useSubset;
+    const uint32_t freqCount = FHSSconfig->freq_count;
+#endif
+    sync_channel = freqCount / 2;
 
     DBGLN("Primary Domain %s, %u channels, sync=%u",
         FHSSconfig->domain, FHSSconfig->freq_count, sync_channel);
+    if (FHSSsubsetActive)
+        DBGLN("Primary subset active: channels %u-%u", subset_offset, subset_offset + freqCount - 1);
 
-    FHSSrandomiseFHSSsequenceBuild(seed, FHSSconfig->freq_count, sync_channel, FHSSsequence);
+    primaryBandCount = FHSSrandomiseFHSSsequenceBuild(seed, freqCount, sync_channel, FHSSsequence);
 
-#if defined(RADIO_LR1121)
+#if defined(FHSS_HAS_DUAL_BAND)
     FHSSconfigDualBand = &domainsDualBand[0];
-    sync_channel_DualBand = FHSSconfigDualBand->freq_count / 2;
-    freq_spread_DualBand = (FHSSconfigDualBand->freq_stop - FHSSconfigDualBand->freq_start) * FREQ_SPREAD_SCALE / (FHSSconfigDualBand->freq_count - 1);
-    secondaryBandCount = (FHSS_SEQUENCE_LEN / FHSSconfigDualBand->freq_count) * FHSSconfigDualBand->freq_count;
+    freq_spread_DualBand = freqSpreadFor(FHSSconfigDualBand);
+#if defined(USE_FHSS_SUBSET)
+    const auto &secondarySubset = firmwareOptions.fhss_subset[SECONDARY_BAND];
+    FHSSsubsetActive_DualBand = FHSSapplySubset(useSubset, secondarySubset.start, secondarySubset.count,
+                                                FHSSconfigDualBand, &subset_offset_DualBand, &effective_freq_count_DualBand);
+    const uint32_t freqCountDualBand = effective_freq_count_DualBand;
+#else
+    const uint32_t freqCountDualBand = FHSSconfigDualBand->freq_count;
+#endif
+    sync_channel_DualBand = freqCountDualBand / 2;
 
     DBGLN("Dual Domain %s, %u channels, sync=%u",
         FHSSconfigDualBand->domain, FHSSconfigDualBand->freq_count, sync_channel_DualBand);
+    if (FHSSsubsetActive_DualBand)
+        DBGLN("Dual subset active: channels %u-%u", subset_offset_DualBand, subset_offset_DualBand + freqCountDualBand - 1);
 
-    FHSSusePrimaryFreqBand = false;
-    FHSSrandomiseFHSSsequenceBuild(seed, FHSSconfigDualBand->freq_count, sync_channel_DualBand, FHSSsequence_DualBand);
-    FHSSusePrimaryFreqBand = true;
+    secondaryBandCount = FHSSrandomiseFHSSsequenceBuild(seed, freqCountDualBand, sync_channel_DualBand, FHSSsequence_DualBand);
 #endif
 
     // add frequency and regulatory domain to the string used by the Lua script
@@ -131,47 +422,39 @@ Approach:
   another random entry, excluding the sync channel.
 
 */
-void FHSSrandomiseFHSSsequenceBuild(const uint32_t seed, uint32_t freqCount, uint_fast8_t syncChannel, uint8_t *inSequence)
+uint16_t FHSSrandomiseFHSSsequenceBuild(const uint32_t seed, const uint32_t freqCount, const uint_fast8_t syncChannel, uint8_t *inSequence)
 {
-    // reset the pointer (otherwise the tests fail)
-    FHSSptr = 0;
+    const uint16_t sequenceCount = (FHSS_SEQUENCE_LEN / freqCount) * freqCount;
+
     rngSeed(seed);
 
-    // initialize the sequence array
-    for (uint16_t i = 0; i < FHSSgetSequenceCount(); i++)
+    // Blocks are filled and shuffled independently, so doing both in one pass
+    // draws the same random numbers in the same order as two separate walks
+    for (uint16_t base = 0; base < sequenceCount; base += freqCount)
     {
-        if (i % freqCount == 0) {
-            inSequence[i] = syncChannel;
-        } else if (i % freqCount == syncChannel) {
-            inSequence[i] = 0;
-        } else {
-            inSequence[i] = i % freqCount;
-        }
-    }
+        // initialize the block
+        for (uint32_t j = 0; j < freqCount; j++)
+            inSequence[base + j] = j;
+        // the sync channel leads every block and the entry it displaced takes
+        // the 0. A sync channel outside the block leaves the 0 unplaced rather
+        // than writing past the block, which is what the old modulo form did
+        inSequence[base] = syncChannel;
+        if (syncChannel < freqCount)
+            inSequence[base + syncChannel] = 0;
 
-    for (uint16_t i = 0; i < FHSSgetSequenceCount(); i++)
-    {
-        // if it's not the sync channel
-        if (i % freqCount != 0)
+        // entry 0 of each block is the sync channel and stays put
+        for (uint32_t j = 1; j < freqCount; j++)
         {
-            uint8_t offset = (i / freqCount) * freqCount;   // offset to start of current block
             uint8_t rand = rngN(freqCount - 1) + 1;         // random number between 1 and FHSS_FREQ_CNT
 
             // switch this entry and another random entry in the same block
-            uint8_t temp = inSequence[i];
-            inSequence[i] = inSequence[offset+rand];
-            inSequence[offset+rand] = temp;
+            uint8_t temp = inSequence[base + j];
+            inSequence[base + j] = inSequence[base + rand];
+            inSequence[base + rand] = temp;
         }
     }
 
-    // output FHSS sequence
-    // for (uint16_t i=0; i < FHSSgetSequenceCount(); i++)
-    // {
-    //     DBG("%u ",inSequence[i]);
-    //     if (i % 10 == 9)
-    //         DBGCR;
-    // }
-    // DBGCR;
+    return sequenceCount;
 }
 
 /**

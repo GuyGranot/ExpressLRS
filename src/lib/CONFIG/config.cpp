@@ -166,10 +166,20 @@ static void ModelV7toV8(v7_model_config_t const * const v7, model_config_t * con
 
 TxConfig::TxConfig() :
     BindphraseConfigurable(), m_model(m_config.model_config)
+#if defined(HAS_MODEL_EXTRAS)
+    , m_modelExtras{}
+#endif
 {
 }
 
 #if defined(PLATFORM_ESP32)
+static void modelKey(char *buf, const char *prefix, unsigned modelId)
+{
+    // stpcpy leaves the cursor at the terminator, so this is one pass over the
+    // prefix; Load() builds one key per model and does not want two.
+    itoa(modelId, stpcpy(buf, prefix), 10);
+}
+
 void TxConfig::Load()
 {
     m_modified = 0;
@@ -251,8 +261,8 @@ void TxConfig::Load()
 
     for(unsigned i=0; i<CONFIG_TX_MODEL_CNT; i++)
     {
-        char model[10] = "model";
-        itoa(i, model+5, 10);
+        char model[11];
+        modelKey(model, "model", i);
         if (nvs_get_u32(handle, model, &value) == ESP_OK)
         {
             // Chaining update, last calls nvs_set_u32, all others set `value`
@@ -286,6 +296,15 @@ void TxConfig::Load()
                 m_config.model_config[i].rate = enumRatetoIndexSafe(POWER_OUTPUT_VALUES_COUNT == 0 ? RATE_LORA_2G4_250HZ : RATE_LORA_900_200HZ);
                 nvs_set_u32(handle, model, Model_to_U32(&m_config.model_config[i]));
             }
+
+#if defined(HAS_MODEL_EXTRAS)
+            // see config_modelext.h; Commit() only ever writes this alongside
+            // "modelN", so a model with no base config cannot have one
+            char modelExt[11];
+            modelKey(modelExt, "modelext", i);
+            if (nvs_get_u32(handle, modelExt, &value) == ESP_OK)
+                m_modelExtras[i].raw = ModelExtraSanitize(value);
+#endif
         }
     } // for each model
 
@@ -436,9 +455,15 @@ TxConfig::Commit()
     if (m_modified & EVENT_CONFIG_MODEL_CHANGED)
     {
         uint32_t value = Model_to_U32(m_model);
-        char model[10] = "model";
-        itoa(m_modelId, model+5, 10);
+        char model[11];
+        modelKey(model, "model", m_modelId);
         nvs_set_u32(handle, model, value);
+
+#if defined(HAS_MODEL_EXTRAS)
+        char modelExt[11];
+        modelKey(modelExt, "modelext", m_modelId);
+        nvs_set_u32(handle, modelExt, m_modelExtras[m_modelId].raw);
+#endif
     }
     if (m_modified & EVENT_CONFIG_VTX_CHANGED)
     {
@@ -584,6 +609,19 @@ TxConfig::SetModelMatch(bool modelMatch)
         m_modified |= EVENT_CONFIG_MODEL_CHANGED;
     }
 }
+
+#if defined(HAS_MODEL_EXTRAS)
+void
+TxConfig::SetBandSubset(bool bandSubset)
+{
+    if (GetBandSubset() != bandSubset)
+    {
+        m_modelExtras[m_modelId].val.bandSubset = bandSubset;
+        m_modelExtras[m_modelId].val.extSchema = MODEL_EXTRA_SCHEMA;
+        m_modified |= EVENT_CONFIG_MODEL_CHANGED;
+    }
+}
+#endif
 
 void
 TxConfig::SetVtxBand(uint8_t vtxBand)
@@ -746,6 +784,9 @@ TxConfig::SetDefaults(bool commit)
 {
     // Reset everything to 0/false and then just set anything that zero is not appropriate
     memset(&m_config, 0, sizeof(m_config));
+#if defined(HAS_MODEL_EXTRAS)
+    memset(m_modelExtras, 0, sizeof(m_modelExtras));
+#endif
 
     m_config.version = TX_CONFIG_VERSION | TX_CONFIG_MAGIC;
     m_config.powerFanThreshold = PWR_250mW;

@@ -32,6 +32,20 @@
 
 -DLOCK_ON_FIRST_CONNECTION
 
+# Restrict frequency hopping to a contiguous block of the band's channels. The
+# block (first channel and channel count) is set per band from the ExpressLRS
+# Lua script, in a Subset Bands folder that the transmitter and the receiver
+# both expose, and both must match or they will not connect. A per-model toggle
+# then enables it. Compiled out unless this is defined. That toggle needs NVS,
+# which an ESP8266 transmitter does not have, so such a transmitter offers
+# neither the toggle nor the folder and always runs full band.
+#-DUSE_FHSS_SUBSET
+
+# Minimum channel count allowed for a restricted-band FHSS subset (options.json
+# fhss-subset-* keys). Defaults to 15: EN 300 328 requires at least 15 hopping
+# channels for 2.4GHz FHSS equipment. Lowering this is for bench use only.
+#-DFHSS_SUBSET_MIN=15
+
 # For TX devices with fans, FAN_MIN_RUNTIME keeps the fan running even after the power level has
 # dropped below the configured Fan Threshold. This prevents the fan from turning on and off every
 # few seconds if the power level is constantly changing.

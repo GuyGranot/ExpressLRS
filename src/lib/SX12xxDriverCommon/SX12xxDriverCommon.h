@@ -45,6 +45,9 @@ namespace RadioBandMod {
     static constexpr bool isB2G4(uint8_t t) { return getBand(t) == B2G4; }
     static constexpr bool isBDUAL(uint8_t t) { return getBand(t) == BDUAL; }
     static constexpr bool isSameBand(uint8_t a, uint8_t b) { return getBand(a) == getBand(b); }
+
+    // Whether a band is occupied at all, which for dual is both of them
+    static constexpr bool usesB2G4(uint8_t t) { return isB2G4(t) || isBDUAL(t); }
 }
 
 class SX12xxDriverCommon

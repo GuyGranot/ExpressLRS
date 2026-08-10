@@ -22,6 +22,15 @@ typedef struct _options {
     uint8_t     _magic_[8];     // this is the magic constant so the configurator can find this options block
     uint16_t    _version_;      // the version of this structure
     uint8_t     domain;         // depends on radio chip
+#if defined(USE_FHSS_SUBSET)
+    // FHSS channel subset per physical band, indexed by fhss_band_e: first
+    // channel index on that band's full-band grid, and how many channels,
+    // 0 = full band. Sub-GHz first, which is also the MSP wire order.
+    struct {
+        uint8_t start;
+        uint8_t count;
+    }           fhss_subset[2];
+#endif
     uint8_t     hasUID;
     uint8_t     uid[6];         // MY_UID derived from MY_BINDING_PHRASE
     uint32_t    flash_discriminator;    // Discriminator value used to determine if the device has been reflashed and therefore
@@ -62,6 +71,15 @@ extern uint32_t logo_image;
 extern String& getOptions();
 extern String& getHardware();
 extern void saveOptions();
+
+// Ask for options.json to be written the next time the main loop reaches a point
+// where blocking on flash is safe. Writing it takes tens of milliseconds with the
+// flash cache stalled, so a direct saveOptions() from a Lua write callback lands
+// mid-packet and costs telemetry - the same hazard config commits are wrapped
+// against on the transmitter. Never call saveOptions() from a parameter callback.
+void saveOptionsDeferred();
+bool optionsSavePending();
+void saveOptionsIfPending();
 void setOptions(String &options);
 
 #include "EspFlashStream.h"

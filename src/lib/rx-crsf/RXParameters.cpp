@@ -189,7 +189,7 @@ static selectionParameter luaMappingOutputMode = {
 static selectionParameter luaMappingInverted = {
     {"Invert", CRSF_TEXT_SELECTION},
     0, // value
-    "Off;On",
+    STR_OFF_ON,
     STR_EMPTYSPACE
 };
 
@@ -628,6 +628,14 @@ void RXEndpoint::registerParameters()
   });
 
   registerParameter(&luaModelNumber);
+
+#if defined(USE_FHSS_SUBSET)
+  // Nothing receiver-side goes inside the folder: the request is the
+  // transmitter's per-model toggle, and this end only holds the definition
+  registerBandSubsetFolder();
+  registerBandSubsetFields();
+#endif
+
   registerParameter(&luaELRSversion);
 }
 
@@ -704,5 +712,9 @@ void RXEndpoint::updateParameters()
     LUA_FIELD_HIDE(luaSourceSysId)
     LUA_FIELD_HIDE(luaTargetSysId)
   }
+
+#if defined(USE_FHSS_SUBSET)
+  updateBandSubsetParameters();
+#endif
 }
 #endif

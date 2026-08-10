@@ -173,6 +173,24 @@ protected:
     static void setFloatValue(floatParameter *parameter, const int32_t newValue) { parameter->properties.value = htobe32((uint32_t)newValue); }
 
     /**
+     * Narrows the range the handset offers for a float parameter whose legal
+     * values depend on the live configuration. The bounds travel with the value
+     * on the next PARAMETER_READ, so a bound that moves must be derivable from
+     * state the handset can see change too.
+     *
+     * @param parameter Pointer to the floatParameter structure to modify
+     * @param min Lowest value the handset should offer
+     * @param max Highest value the handset should offer
+     * @param step How far one click of the handset's encoder moves the value
+     */
+    static void setFloatRange(floatParameter *parameter, const int32_t min, const int32_t max, const int32_t step)
+    {
+        parameter->properties.min = htobe32((uint32_t)min);
+        parameter->properties.max = htobe32((uint32_t)max);
+        parameter->properties.step = htobe32((uint32_t)step);
+    }
+
+    /**
      * Sets a string value in a CRSF parameter structure.
      *
      * @param parameter Pointer to the stringParameter structure to modify
@@ -196,6 +214,7 @@ private:
     static uint8_t *commandParameterToArray(const commandParameter *parameter, uint8_t *next);
     static uint8_t *int8ParameterToArray(const int8Parameter *parameter, uint8_t *next);
     static uint8_t *int16ParameterToArray(const int16Parameter *parameter, uint8_t *next);
+    static uint8_t *floatParameterToArray(const floatParameter *parameter, uint8_t *next);
     static uint8_t *stringParameterToArray(const stringParameter *parameter, uint8_t *next);
     uint8_t *folderParameterToArray(const folderParameter *parameter, uint8_t *next) const;
 
