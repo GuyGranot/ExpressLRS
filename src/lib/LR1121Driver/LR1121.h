@@ -55,6 +55,12 @@ public:
 
     void StartRssiInst(SX12XX_Radio_Number_t radioNumber);
     int8_t GetRssiInst(SX12XX_Radio_Number_t radioNumber);
+#if defined(TX_SPECTRUM_SCAN)
+    // Drop out of RX so the next RX entry restarts the receiver and re-runs
+    // gain acquisition. RX_CONT never self-exits, so without this a gain step
+    // chosen for one sweep bin carries into every bin after it.
+    void SpectrumResetRx(SX12XX_Radio_Number_t radioNumber) { SetMode(LR1121_MODE_STDBY_RC, radioNumber); }
+#endif
     void GetLastPacketStats();
     void CheckForSecondPacket();
 

@@ -471,7 +471,9 @@ static int timeout()
 
 static int event()
 {
-    const bool disabled = config.GetBackpackDisable() || connectionState == bleJoystick || connectionState == wifiUpdate;
+    // spectrumScan too: a 2.4GHz sweep would measure our own backpack's WiFi/ESPNOW
+    bool disabled = config.GetBackpackDisable() || connectionState == bleJoystick ||
+                    connectionState == wifiUpdate || connectionState == spectrumScan;
     if (GPIO_PIN_BACKPACK_EN != UNDEF_PIN)
     {
         // EN should be HIGH to be active

@@ -8,3 +8,7 @@ src/.vscode
 src/data/*.ini
 src/data/*.json
 src/hardware
+
+# Golden-vector generator binary (src/lua/mockup/gen_spectrumgolden.cpp)
+src/lua/mockup/gen_spectrumgolden
+src/lua/mockup/gen_spectrumgolden.exe

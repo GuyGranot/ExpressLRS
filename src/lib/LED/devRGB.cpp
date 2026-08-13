@@ -258,6 +258,7 @@ constexpr uint8_t LEDSEQ_NO_CROSSFIRE[] = {  10, 100 }; // 1 blink, 1s pause (on
 constexpr uint8_t LEDSEQ_BINDING[] = { 10, 10, 10, 100 };   // 2x 100ms blink, 1s pause
 constexpr uint8_t LEDSEQ_MODEL_MISMATCH[] = { 10, 10, 10, 10, 10, 100 };   // 3x 100ms blink, 1s pause
 constexpr uint8_t LEDSEQ_UPDATE[] = { 20, 5, 5, 5, 5, 40 };   // 200ms on, 2x 50ms off/on, 400ms off
+constexpr uint8_t LEDSEQ_SPECTRUM_SCAN[] = { 5, 5, 5, 5, 5, 50 };   // 3x 50ms blink, 500ms pause
 
 #define NORMAL_UPDATE_INTERVAL 50
 
@@ -451,6 +452,11 @@ static int timeout()
     case bleJoystick:
         hueFadeLED(blinkyColor, 170, 170+30, 128, 2);    // Blue cross-fade
         return 5;
+    case spectrumScan:
+        // Blink rather than fade: the link states derive hue from the packet
+        // rate, so no constant colour is unambiguous
+        blinkyColor.h = 212;
+        return flashLED(blinkyColor, 192, 0, LEDSEQ_SPECTRUM_SCAN, sizeof(LEDSEQ_SPECTRUM_SCAN));
     case radioFailed:
         blinkyColor.h = 0;
         return flashLED(blinkyColor, 192, 0, LEDSEQ_RADIO_FAILED, sizeof(LEDSEQ_RADIO_FAILED));
