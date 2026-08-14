@@ -8,6 +8,10 @@
 #include "rxtx_intf.h"
 #include "logging.h"
 
+#if defined(RX_SPECTRUM_SCAN)
+#include "devRxSpectrum.h"
+#endif
+
 extern void reset_into_bootloader();
 
 RXEndpoint::RXEndpoint()
@@ -41,6 +45,18 @@ bool RXEndpoint::handleRaw(const crsf_header_t *message)
             config.SetModelId(payload[2]);
             return true;
         }
+#if defined(RX_SPECTRUM_SCAN)
+        // dest=s src=p -> receive-only spectrum scan: payload[2] band (0=900,
+        // 1=2.4, 2=both), then optional rbw (spectrumRbw_e) and antenna-compare
+        // bytes -- optional so a shorter trigger from an older sender still works
+        if (payload[0] == 's' && payload[1] == 'p')
+        {
+            RxSpectrumStart(payload[2],
+                            (message->frame_size >= 6) ? payload[3] : rbwWide,
+                            (message->frame_size >= 7) && payload[4] != 0);
+            return true;
+        }
+#endif
     }
     return false;
 }

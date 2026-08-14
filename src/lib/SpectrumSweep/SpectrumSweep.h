@@ -2,7 +2,7 @@
 
 #include "device.h"
 
-#if defined(TX_SPECTRUM_SCAN)
+#if defined(TX_SPECTRUM_SCAN) || defined(RX_SPECTRUM_SCAN)
 
 #include "SpectrumProtocol.h"
 
