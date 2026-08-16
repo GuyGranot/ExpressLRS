@@ -173,12 +173,20 @@ static inline const char *FHSSgetRegulatoryDomain()
     }
 }
 
+// A channel's Gemini partner, half the domain away. The radios want the
+// partner's frequency and the survey wants its channel number, so the rule is
+// named here rather than recomputed either side of that split.
+static inline uint8_t FHSSgeminiPartnerChannel(uint8_t chan)
+{
+    const uint32_t numfhss = FHSSgetChannelCount();
+    return (uint8_t)((chan + (numfhss / 2)) % numfhss);
+}
+
 // Get frequency offset by half of the domain frequency range
 static inline uint32_t FHSSGeminiFreq(uint8_t FHSSsequenceIdx)
 {
     uint32_t freq;
-    uint32_t numfhss = FHSSgetChannelCount();
-    uint8_t offSetIdx = (FHSSsequenceIdx + (numfhss / 2)) % numfhss; 
+    uint8_t offSetIdx = FHSSgeminiPartnerChannel(FHSSsequenceIdx);
 
     if (FHSSusePrimaryFreqBand)
     {

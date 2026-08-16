@@ -299,8 +299,7 @@ void ICACHE_RAM_ATTR RxSurveyTock()
     uint8_t chanR2 = chanP;
     if (geminiSplit)
     {
-        const uint8_t numfhss = (uint8_t)FHSSgetChannelCount();
-        const uint8_t partner = (uint8_t)((chanP + numfhss / 2) % numfhss);
+        const uint8_t partner = FHSSgeminiPartnerChannel(chanP);
         // the same expression HandleFHSS used when it tuned this dwell
         parity = ((OtaNonce / ExpressLRS_currAirRate_Modparams->FHSShopInterval) % 2) == 0;
         chanR1 = parity ? chanP : partner;
