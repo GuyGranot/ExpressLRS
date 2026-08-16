@@ -82,6 +82,63 @@ jobs:
         platformio pkg update
         PLATFORMIO_BUILD_FLAGS="-DRegulatory_Domain_ISM_2400" pio test -e native
 
+  # No target env enables the survey, so it needs a compile check of its own:
+  # once per radio driver, because the RSSI read is two-step on the LR1121 and
+  # the packet-RSSI gate is SX128x-only. The grep is the point of the job -- a
+  # flag that never reaches the compiler still builds green, with the feature
+  # simply absent. Do NOT add -DRegulatory_Domain_ISM_2400 to these flags: the
+  # string reaches build_flags.py whole, and the line that strips ISM_2400
+  # takes every flag passed alongside it.
+  survey-feature-build:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: Unified_ESP32C3_LR1121_RX_via_UART
+            flags: "-DRegulatory_Domain_FCC_915 -DDEBUG_RF_SURVEY"
+          - target: Unified_ESP32_2400_RX_via_UART
+            flags: "-DDEBUG_RF_SURVEY"
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v6
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.10'
+
+    - name: Cache pip
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ matrix.target }}
+
+    - name: Install PlatformIO
+      run: |
+        python -m pip install --upgrade pip
+        pip install platformio
+        pip install wheel
+
+    - name: Cache PlatformIO
+      uses: actions/cache@v5
+      with:
+        path: ~/.platformio
+        key: ${{ runner.os }}-platformio
+
+    - name: Run PlatformIO
+      run: |
+        set -o pipefail
+        cd src
+        platformio pkg update
+        log="$(mktemp)"
+        PLATFORMIO_BUILD_FLAGS="${{ matrix.flags }}" pio run -e ${{ matrix.target }} 2>&1 | tee "$log"
+        grep -q 'build flags:.*DEBUG_RF_SURVEY' "$log" || {
+          echo "::error::DEBUG_RF_SURVEY never reached the compiler for ${{ matrix.target }}"
+          exit 1
+        }
+
   targets:
     needs:
       - build-and-validate-artifacts
