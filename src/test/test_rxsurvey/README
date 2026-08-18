@@ -1,0 +1,85 @@
+Regenerating the golden vectors in python/test_tools/rxsurvey.py
+================================================================
+
+GOLDEN_FRAMES and GOLDEN_DEBUG in python/test_tools/rxsurvey.py come from
+SurveyEncodeFrame() and SurveyPackDebug() compiled for the host -- never edit
+them by hand. Regenerate whenever the wire format in
+lib/RxSurvey/SurveyProtocol.h changes: save the program below as gen.cpp
+outside the tree, then from src/:
+
+    g++ -std=c++11 -Ilib/RxSurvey -o gen gen.cpp && ./gen
+
+Paste the first two hex lines into GOLDEN_FRAMES (full frame first, gate report
+second) and the last two into GOLDEN_DEBUG, update the field values the
+selftest asserts to match, then re-run `python test_tools/rxsurvey.py
+--selftest`.
+
+----------------------------------------------------------------------------
+#include <cstdio>
+#include <cstring>
+#include "SurveyProtocol.h"
+
+static void dump(const uint8_t *p, const uint8_t n)
+{
+    for (uint8_t i = 0; i < n; i++) printf("%02x", p[i]);
+    printf("\n");
+}
+
+int main()
+{
+    uint8_t payload[SURVEY_MAX_PAYLOAD_BYTES];
+
+    surveySample_t s[SURVEY_MAX_SAMPLES_PER_FRAME];
+    for (uint8_t i = 0; i < SURVEY_MAX_SAMPLES_PER_FRAME; i++)
+    {
+        memset(&s[i], 0, sizeof(s[i]));
+        s[i].chan1 = i;
+        s[i].chan2 = (uint8_t)(i + 40);
+        s[i].rssi1 = (int8_t)(-100 + i);
+        s[i].rssi2 = (int8_t)(-95 + i);
+        s[i].flags = (uint8_t)((i & 1) ? SURVEY_SFLAG_PACKET_ON_RADIO2
+                                       : SURVEY_SFLAG_CLEAN);
+    }
+
+    surveyFrameInfo_t full;
+    memset(&full, 0, sizeof(full));
+    full.flags = SURVEY_FLAG_DUAL_RADIO;
+    full.seq = 50;
+    full.enumRate = 4;
+    full.bwKhz = 812;
+    full.lnaGainDb = 12;
+    full.channelCount = 80;
+    full.startFreqKhz = 2400400;   // the real 2.4GHz FHSS grid
+    full.stepKhz = 1000;
+    full.dropped = 0;
+    full.sampleCount = SURVEY_MAX_SAMPLES_PER_FRAME;
+    dump(payload, SurveyEncodeFrame(payload, s, &full));
+
+    surveyFrameInfo_t gate;
+    memset(&gate, 0, sizeof(gate));
+    gate.flags = SURVEY_FLAG_GATED_TIMER | SURVEY_FLAG_GATED_RATE;
+    gate.seq = 51;
+    gate.enumRate = 4;
+    gate.bwKhz = 500;
+    gate.lnaGainDb = 12;
+    gate.channelCount = 40;
+    gate.startFreqKhz = 903500;    // the real FCC915 grid
+    gate.stepKhz = 600;
+    gate.startFreqKhz2 = 2400400;  // dual-band: second axis is the 2.4GHz grid
+    gate.stepKhz2 = 1000;
+    gate.channelCount2 = 80;
+    gate.dropped = 600;
+    gate.sampleCount = 0;
+    dump(payload, SurveyEncodeFrame(payload, nullptr, &gate));
+
+    // two packed 3-byte transport samples: an ordinary one, then the sentinels
+    const surveyDebug_t d1 = {100, 95, 42, true, false, true};
+    const surveyDebug_t d2 = {SURVEY_DBG_MAG_INVALID, 0, SURVEY_DBG_CHAN_NONE, false, true, false};
+    uint8_t dbg[3];
+    SurveyPackDebug(dbg, &d1);
+    dump(dbg, 3);
+    SurveyPackDebug(dbg, &d2);
+    dump(dbg, 3);
+    return 0;
+}
+----------------------------------------------------------------------------

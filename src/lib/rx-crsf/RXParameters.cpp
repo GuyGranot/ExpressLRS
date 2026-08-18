@@ -5,6 +5,7 @@
 #include "POWERMGNT.h"
 #include "config.h"
 #include "deferred.h"
+#include "devRxSurvey.h"
 #include "devServoOutput.h"
 #include "helpers.h"
 #include "rxtx_intf.h"
@@ -98,6 +99,17 @@ static selectionParameter luaAntennaGroup = {
     "External;Builtin",
     STR_EMPTYSPACE
 };
+
+#if defined(DEBUG_RF_SURVEY)
+// Volatile, RAM only: the static 0 is the boot default (Off) and nothing ever
+// writes it to config. Option order matches RX_SURVEY_*.
+static selectionParameter luaRFSurvey = {
+    {"RF Survey", CRSF_TEXT_SELECTION},
+    0, // value
+    "Off;Both;900;2.4",
+    STR_EMPTYSPACE
+};
+#endif
 
 static folderParameter luaTeamraceFolder = {
     {"Team Race", CRSF_FOLDER},
@@ -561,6 +573,15 @@ void RXEndpoint::registerParameters()
       config.SetAntennaGroup(arg);
     });
   }
+
+#if defined(DEBUG_RF_SURVEY)
+  registerParameter(&luaRFSurvey, [](propertiesCommon* item, uint8_t arg){
+    // not persisted, so echo the value here or the selector snaps back to
+    // Off on the handset's read-after-write
+    setTextSelectionValue(&luaRFSurvey, arg);
+    RxSurveySetMode(arg);
+  });
+#endif
 
   if (POWERMGNT::getMinPower() != POWERMGNT::getMaxPower())
   {

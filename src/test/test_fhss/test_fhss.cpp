@@ -84,6 +84,24 @@ void test_fhss_reg_same(void)
     }
 }
 
+// The radios tune the Gemini partner while the survey records the channel it
+// is sitting on, so both take it from FHSSgeminiPartnerChannel: the channel it
+// names must be the one the radio tunes, and must stay a domain index, since
+// the survey feeds it to a coverage bitmap.
+void test_fhss_gemini_partner_channel(void)
+{
+    FHSSrandomiseFHSSsequence(0x01020304L);
+
+    const uint32_t numFhss = FHSSgetChannelCount();
+
+    for (unsigned int i = 0; i < numFhss; i++) {
+        const uint8_t partner = FHSSgeminiPartnerChannel(i);
+        TEST_ASSERT_LESS_THAN_UINT32(numFhss, partner);
+        TEST_ASSERT_EQUAL(FHSSconfig->freq_start + freq_spread * partner / FREQ_SPREAD_SCALE,
+                          FHSSGeminiFreq(i));
+    }
+}
+
 // Unity setup/teardown
 void setUp() {}
 void tearDown() {}
@@ -96,6 +114,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_fhss_unique);
     RUN_TEST(test_fhss_same);
     RUN_TEST(test_fhss_reg_same);
+    RUN_TEST(test_fhss_gemini_partner_channel);
     UNITY_END();
 
     return 0;
