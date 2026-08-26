@@ -1,8 +1,15 @@
 # Action Camera Bridge — Product Requirements Specification
 
-**Status:** **v1.2 — frozen audited baseline, 2026-08-26.** Seven audits clean; 246 requirements, 201
-validation cases, 37 platform facts. Subsequent findings — including Osmo Nano / DUML results — land as a new
-delta with its own ledger section; **this audit history is not edited in place.**
+**Status:** **v1.3 — audited baseline, 2026-08-27.** 247 requirements, 202 validation cases, 37 platform
+facts. Seven audits re-run against the artifacts themselves rather than against the ledger's reported
+results; **all clean except one open item, CR-24**, a Betaflight platform constant absent from both the PRS
+and Evidence, which blocks the maintenance-gesture interlock (`SETUP-05`, `SETUP-09`) and nothing else.
+CR-11 remains open by decision.
+
+**This is not frozen.** v1.2 was declared frozen and two specification defects and four stale audit blocks
+survived the declaration; the v1.3 delta (Traceability Ledger §5c) records what that cost. Subsequent
+findings — including Osmo Nano / DUML results — land as a new delta with its own ledger section. **Historical
+ledger blocks are not edited in place; measured blocks are regenerated at every delta** (§5d).
 Compressed from PRS v1.0 (`action-camera-bridge-prs-source-v1.0.md`,
 sha256 `e6178686acfa71e932784cf44041a988f9d72e8ff64162c89588bce8a700b473`) under the compression rule
 of 2026-08-26, **plus the separately reviewed v1.1 and v1.2 normative deltas recorded in Traceability
@@ -741,6 +748,10 @@ For a plain text field: `part0.type = CUSTOM_ELEMENT_TYPE_TEXT (1)`, remaining p
 **Whole-element rewrite.** Every SET replaces parts, visibility and text together. The bridge shall
 cache complete element state and resend it intact on each update; it cannot patch one field.
 
+The custom-element setter carries no armed guard and touches no flash, so **writes are accepted while
+armed** (`PF-INAV-10`) — the same property `OSD-07` records for Betaflight. INAV does guard other MSP
+commands, and the claim is *"this handler is unguarded"*, never *"INAV guards only reboot"* (`PF-INAV-10`).
+
 **OSD-09 — owned-slot initialisation.** As soon as the FC backend is up, and **before any camera
 connection is attempted**, the bridge shall write **every owned slot** to non-authoritative content
 (blank, or a connection-state string such as `CONNECTING`). This runs on every bridge start, whether or
@@ -806,6 +817,17 @@ Where it is false the bridge shall present the same information through the setu
 issue **no** platform OSD write. This is the single place that resolves `FC-05`'s and `FC-09`'s prohibitions
 against the otherwise unconditional obligations above: **the prohibitions win**, and an implementation needs
 one flag rather than a per-requirement judgement call.
+
+**The three terms above are exhaustive. FC armed state is not among them, on either platform**, and the
+bridge shall not suppress, defer or degrade an OSD write because the FC reports armed. Both backends'
+handlers are unguarded and flash-free (`PF-BF-03`, `PF-INAV-10`), so the capability exists on both; this
+requirement is what makes *using* it obligatory rather than merely permitted. The OSD is most load-bearing
+in exactly the state an armed check would silence it — a `CAM LOST` a pilot never sees while flying is the
+failure this prevents.
+
+This is `FC-11` applied to the display path. `FC-11` enumerates camera control, BLE reconnect policy and
+setup; **OSD writes are a fourth surface and were not covered**, which left one backend stating the property
+and the other silent (v1.3, CR-15).
 
 **OSD-20 — warning policy.**
 
@@ -1357,15 +1379,31 @@ unconditional clearing shall not be made conditional.
 is not a statement of user intent, and pairing to a stranger's camera is a silent failure that survives
 power cycles.
 
-**PAIR-11 — discovery completion.** A discovery scan shall run to a defined completion criterion — a stated
-minimum scan duration, or the `PAIR-03` bound, whichever comes first — and **shall not terminate merely
-because its first supported candidate has been observed.** Candidate-set evaluation and `PAIR-08` selection
-occur **only after completion**.
+**PAIR-11 — discovery completion.** A discovery scan **completes when the `PAIR-12` discovery dwell has
+elapsed**, and **shall not terminate merely because its first supported candidate has been observed.**
+Candidate-set evaluation and `PAIR-08` selection occur **only after completion**. A scan that has not
+completed by the `PAIR-03` bound yields `SCAN_TIMEOUT` and evaluates nothing.
 
 Observing camera A at 2 s is no evidence that camera B would not have advertised at 3 s, so a scan that stops
 at the first hit can never establish the *exactly one* case `PAIR-08` turns on. Worse, **selecting the first
 responder is `PAIR-09`'s prohibited behaviour under another name** — the nearest camera is generally the one
 that answers first, which is precisely how a bridge binds a stranger's camera at a flying field.
+
+**PAIR-12 — discovery dwell. Value delegated; the obligation is not.** The dwell is the minimum time a
+discovery scan shall observe before it is permitted to conclude what the candidate set contains. It is a
+single duration for all supported camera families, is registered `OPEN` in `REL-02`, and is closed by
+`VAL-SPIKE-07`.
+
+**Until it is closed, an implementation shall use the `PAIR-03` discovery-scan bound as the dwell** — the
+longest value the specification permits, and therefore the only interim choice that cannot conclude too
+early. This is a stated fallback, not implementer discretion (`REL-02`).
+
+The dwell is delegated rather than fixed because the quantity that decides it — how long a supported camera
+may go without advertising while it is nonetheless present and pairable — is a measured property of the
+camera, not of the bridge. **A guessed dwell fails silently and asymmetrically:** too short and `PAIR-08`
+auto-binds a lone candidate while a second camera was still about to advertise, which is the one outcome
+`PAIR-09` exists to prevent; too long and a bench user waits. Only one of those is a safety property, which
+is why the interim value is the conservative end and not a midpoint.
 
 ---
 
@@ -1743,6 +1781,7 @@ defect.**
 | BLE transmit power | `RF-04` | — | **OPEN** | `VAL-SPIKE-02` |
 | BLE duty-cycle ceiling | `RF-08` | — | **OPEN** | `VAL-SPIKE-02` |
 | Candidate-cache storage bounds | `RES-09` | — | **OPEN**, per release | `VAL-SPIKE-03` closes V1; `VAL-SPIKE-04` extends it for V1.1 |
+| Discovery dwell | `PAIR-12` | interim: `PAIR-03` bound | **OPEN** | `VAL-SPIKE-07` |
 | Minimum free internal heap | `RES-03` | ≥ 32 KiB | **PROVISIONAL** | `VAL-SPIKE-03` |
 | Largest allocatable block | `RES-03` | ≥ 16 KiB | **PROVISIONAL** | `VAL-SPIKE-03` |
 | Retained-request mechanism | `BOOT-05` | retained RAM | **CONDITIONAL** | `VAL-SPIKE-05` |

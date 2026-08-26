@@ -271,7 +271,7 @@ This audit catches CR-01-class defects **directly**, rather than indirectly thro
 
 #### 6.5b CR-07 — audit 5 runs in both directions
 
-The forward leg above asks *is every conformance input present in the PRS?* It passed 108/108 and still
+The forward leg above asks *is every conformance input present in the PRS?* It passed on every input it enumerated and still
 missed two defects, because it can only check literals someone thought to enumerate. **The reverse leg is
 mechanical and complete:**
 
@@ -328,6 +328,49 @@ this way, having survived every audit v1.0 ever had.
 
 ---
 
+### 6.8 What a delta shall regenerate *(CR-23, added after the v1.3 re-audit)*
+
+**A ledger contains two kinds of block and they obey opposite rules.**
+
+**Historical blocks** — dispositions, change-request logs, delta tables — record how the current state was
+reached and are **never edited in place**. A correction carries its prior value and names the change request
+that made it.
+
+**Measured blocks** — boundary-value tables, traceability counts, conformance-input inventories, entailment
+figures — state the condition of the artifact *now*. **A delta is not complete until every measured block
+has been regenerated from the current artifacts, and each shall carry the date it was regenerated.**
+
+Carrying a measured block forward is not conservatism; it publishes a false measurement while looking like
+diligence. The v1.2 freeze declared seven audits clean on four blocks that had not been re-run, and the
+figures were wrong in both directions — a threshold that had been tightened still shown as a range, and a
+delegated-parameter count that had grown still shown as 4.
+
+**Re-enumerate; do not increment.** A carried-forward total cannot be corrected by arithmetic, because a
+delta replaces inputs as well as adding them.
+
+### 6.9 What a mechanical screen may and may not conclude *(added after the v1.3 re-audit)*
+
+Audit 6's reverse leg was screened by lexical overlap between each case and each requirement it cites. The
+screen flagged **116 of 413 pairs**, and the true count was three.
+
+**A screen orders the reading. It does not perform the audit, and its output shall not be published as a
+finding count.** Entailment is a semantic relation and low lexical overlap is routine in a correct citation —
+`VAL-FUNC-01`/`FC-03` shares no content words and is exactly entailed. Where a screen is used, the record
+shall state how many flagged pairs were actually read, and **shall not imply the remainder were cleared.**
+
+### 6.10 The third audit-5 outcome *(CR-24)*
+
+Audit 5 was specified with two failure modes: an input reachable only from Evidence, and an input present in
+neither document. **Only the first had ever occurred, and the second was treated as theoretical.** The v1.3
+re-enumeration produced one: a platform constant a requirement's own wording depends on, recorded in neither
+artifact.
+
+**An `absent from both` result shall be left open rather than filled in from memory.** A platform constant
+written down without reading it at the pinned tag is indistinguishable from one that was verified, which is
+the failure mode the whole citation discipline exists to prevent.
+
+---
+
 ## 7. Final acceptance
 
 > **Compression succeeds only when the shorter specification admits exactly the same conforming
@@ -335,9 +378,14 @@ this way, having survived every audit v1.0 ever had.
 
 **This criterion applies to the compression boundary alone.** Deltas applied afterwards deliberately change
 the conforming set, and **the relationship between the source and the current baseline shall be stated as
-what it is** — equivalent-at-the-boundary plus an itemised list of subsequent changes — rather than
-re-asserted as equivalence. A later baseline being *better* than the source is an engineering judgement, not
-a property this criterion certifies.
+what it is** — the boundary result, whatever it was, plus an itemised list of subsequent changes — rather
+than re-asserted as equivalence. A later baseline being *better* than the source is an engineering
+judgement, not a property this criterion certifies.
+
+**And a failure at the boundary is permanent.** A later delta may repair every loss it caused and still not
+satisfy this criterion, because the criterion is about what the compression did, not about what the current
+baseline contains. **"Not met, then met" is not an available outcome**; the only honest forms are *met* and
+*not met, with the repairs itemised* (v1.3, CR-22).
 
 A reduction in words is valuable **only** if it preserves that set. If a shortened statement admits
 behaviour previously prohibited, prohibits behaviour previously permitted, removes a platform distinction,

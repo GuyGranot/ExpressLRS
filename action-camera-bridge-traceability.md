@@ -1,9 +1,13 @@
 # Action Camera Bridge — Traceability Ledger
 
-**Purpose.** This document is the evidence that the compression was lossless. It records the
-disposition of every statement in the frozen source, the results of the seven audits the compression
-rule requires, and — separately — everything the extraction surfaced that would be a **requirement
-change** and was therefore *not* applied.
+**Purpose.** This document is the audit record of the compression and of every delta applied since.
+It records the disposition of every statement in the frozen source, the results of the seven audits the
+compression rule requires, and — separately — everything the extraction surfaced that would be a
+**requirement change** and was therefore *not* applied.
+
+**It is not evidence that the compression was lossless, and shall not be cited as such.** §6 records the
+opposite: the compression lost seven statements. What this document is evidence *of* is that the loss was
+found, itemised and repaired on the record — which is a weaker and truer claim.
 
 **Semantic baseline.** `action-camera-bridge-prs-source-v1.0.md`
 sha256 `e6178686acfa71e932784cf44041a988f9d72e8ff64162c89588bce8a700b473`
@@ -11,25 +15,31 @@ sha256 `e6178686acfa71e932784cf44041a988f9d72e8ff64162c89588bce8a700b473`
 
 **Compression result.** 229 requirements, 37 platform facts, 185 validation cases — **and seven statements
 that should have been requirements and were not** (§4b, §5b, §6). The v1.1 delta of §5a took the set to 234
-requirements and 192 cases; the v1.2 delta of §5b repaired the compression and took it to **246 requirements
-and 201 validation cases.** Both deltas sit deliberately *outside* the equivalence claim.
+requirements and 192 cases; the v1.2 delta of §5b repaired the compression and took it to 246 requirements
+and 201 cases; the v1.3 delta of §5c took it to **247 requirements and 202 validation cases.** **All three
+deltas sit deliberately *outside* the equivalence claim**, which failed at the boundary and cannot be
+satisfied retroactively (§6).
 
 | Document | Words | Role |
 | --- | --- | --- |
-| PRS | 15,240 | the normative reading path |
+| PRS | 15,884 | the normative reading path |
 | Platform Evidence | 7,129 | why each requirement is correct at the pinned tags |
-| Validation | 11,022 | how conformity is demonstrated |
-| Ledger (this file) | 7,178 | audit record |
-| Compression Rule | 2,577 | the method, amended by CR-01 and audits 5b, 6, 7 |
+| Validation | 11,615 | how conformity is demonstrated |
+| Ledger (this file) | 10,877 | audit record |
+| Compression Rule | 3,202 | the method, amended by CR-01, audits 5b/6/7, and CR-23/24 |
 
-*(Word counts are post-v1.2. At the compression boundary the PRS was 12,207 and Validation 9,377; after v1.1
-they were 12,910 and 9,963.)*
+*(Word counts are **regenerated 2026-08-27** and are post-v1.3. At the compression boundary the PRS was
+12,207 and Validation 9,377; after v1.1 they were 12,910 and 9,963; after v1.2, 15,413 and 11,022. The v1.2
+freeze published four of these figures stale — this table is a measured block and is regenerated at every
+delta, §5d.)*
 
-**On the word count.** The normative reading path fell from 31,253 words to 12,207 — a **61 %
-reduction in what an implementer must read to know what to build**. The *total* across four documents
-is slightly larger than the monolith, because IDs, the Verifies column and this ledger are new text.
-That is the expected outcome and not a failure: the compression rule's acceptance criterion is the set
-of admitted implementations, not the byte count.
+**On the word count.** The normative reading path fell from 31,253 words to 12,207 at the compression
+boundary — a **61 % reduction in what an implementer must read to know what to build**. It has since grown
+back to roughly half the monolith as three deltas made implicit semantics explicit. The *total* across four
+documents is now larger than the monolith, because IDs, the Verifies column and this ledger are new text.
+
+**Neither number is the acceptance criterion**, which is the set of admitted implementations. The word count
+is reported because it is the thing most likely to be quoted as if it were a result, and it is not one.
 
 ---
 
@@ -83,7 +93,7 @@ oversight these audits exist to catch. **Every `X` names the change request that
 | 8 | uppercase rule, four fields, blank-not-estimated | R | `OSD-01`, `OSD-02`, `OSD-03` |
 | 9 | BF minimum version + no-2025.12.0 argument | M+E | `SCOPE-01`; argument → `PF-BF-01` |
 | 9 | transport, constants table, payload | R+E | `OSD-07`; constants → `PF-BF-16` |
-| 9 | armed behaviour, persistence, "not the safer platform" | E | `PF-BF-03`, `PF-BF-17` |
+| 9 | armed behaviour, persistence, "not the safer platform" | **R+E** *(corrected in v1.3, CR-21 — was `E`)* | `OSD-07` retains *"writes are accepted while armed"*; persistence and the platform argument → `PF-BF-03`, `PF-BF-17` |
 | 9 | user enables OSD elements | R | `OSD-17` |
 | 9.1 | slot ownership | R | `OSD-04` |
 | 9.2 | update policy table + no-redundant-write | R | `OSD-05`, `OSD-06` |
@@ -284,6 +294,9 @@ Every numeric value, threshold, count and boundary in the PRS, with the requirem
 | 250 ms documented minimum hold | `CTRL-19` | timing |
 | 400 ms default event separation | `CTRL-20` | timing |
 | 10 Hz / 20 Hz poll rates | `CTRL-21`, `MSP-01` | rate |
+| 10 Hz floor; < 10 Hz prohibited; 200 ms two-sample span at 10 Hz | `MSP-08` | threshold |
+| 100 ms OSD state-change latency | `OSD-18` | timing |
+| 1000 / 1500 / 2000 µs — explicitly **not** assumable | `LEARN-08` | negative bound |
 | channels 1–4 excluded | `CTRL-12` | scope |
 | 1 µs — explicitly meaningless | `CTRL-14` | negative bound |
 | `grace = max(failsafe_delay × 100 ms, 100 ms) + margin` | `RCV-08` | formula |
@@ -303,7 +316,7 @@ Every numeric value, threshold, count and boundary in the PRS, with the requirem
 | invalidate **before** execute | `BOOT-06` | ordering |
 | every other reset reason ⇒ `RUN` | `BOOT-07` | absolute |
 | `ESP_RST_POWERON` only (gesture) | `SETUP-08` | predicate |
-| 10–15 s gesture window | `SETUP-10` | timing |
+| **15.0 s** gesture window, from the first qualified sample | `SETUP-10` | timing |
 | 4 transitions, alternating, ending at baseline | `SETUP-12` | pattern |
 | 2 consecutive qualified samples per transition | `SETUP-12` | count |
 | 3.0 s pattern timer, from the **first** transition | `SETUP-12` | timing |
@@ -315,6 +328,7 @@ Every numeric value, threshold, count and boundary in the PRS, with the requirem
 | ≥ 2 channels ⇒ ambiguous | `LEARN-06` | count |
 | 15 s acquisition timeout | `LEARN-06`, `LEARN-17` | timing |
 | 30 s scan / 15 s bind / 120 s lifetime | `PAIR-03` | timing |
+| discovery dwell | `PAIR-12` | **delegated →** `VAL-SPIKE-07`; interim = `PAIR-03` bound |
 | ≤ 8 cache entries, truncation reported | `PAIR-06` | count |
 | exactly 1 candidate ⇒ auto; ≥ 2 ⇒ explicit | `PAIR-08` | predicate |
 | ≥ 32 KiB free heap | `RES-03` | **provisional →** `VAL-SPIKE-03` |
@@ -333,8 +347,14 @@ were completeness statements rather than thresholds and were rephrased (`FC-11`,
 one is logged as CR-04 below rather than changed. `bounded` and `stable` appear only as **defined
 terms**, each within two lines of the number that defines it.
 
-**Delegated values: 4**, each naming both its closing measurement and its write-back destination
-(`RES-03`, `RF-04`, `RF-08` — and `BOOT-05`'s fallback, which names its triggering check).
+**Delegated values: 7 rows in `REL-02`** — `RF-04`, `RF-08`, `RES-09`, `RES-03` (two rows), `BOOT-05`
+and `PAIR-12` — each naming both its closing measurement and its write-back destination. The previous figure
+of **4** predated `RES-09`, `PAIR-12` and the second `RES-03` row (CR-23).
+
+**Regenerated 2026-08-27 from the current PRS** by extracting every numeric literal carrying a unit and
+attributing it to the requirement block containing it, then diffing against this table. That pass is what
+surfaced `MSP-08`, `OSD-18` and `LEARN-08` as unrepresented. **This block is a measurement of the artifact
+and is regenerated at every delta** (§5d).
 
 ---
 
@@ -343,20 +363,27 @@ terms**, each within two lines of the number that defines it.
 Mechanically verified over the whole set. **Figures below are post-delta**; the parenthesised value is the
 figure at the compression boundary, before §5a.
 
+**Regenerated 2026-08-27 against the v1.3 artifacts.**
+
 ```
-requirements defined          246     (229 at the compression boundary, 234 after v1.1)
+requirements defined          247     (229 at the boundary · 234 after v1.1 · 246 after v1.2)
 duplicate definitions           0
 gaps in ID numbering            0
 dangling requirement refs       0     (all five artifacts)
-deontic statements in Evidence 14     (audit 5b: 0 new obligations; 2 repaired in v1.2)
+deontic statements in Evidence 12     (audit 5b: 0 new obligations)
 platform facts defined         37
 dangling platform-fact refs     0
 unreferenced platform facts     0
-validation cases              201     (123 FUNC · 59 FAIL · 13 REV · 6 SPIKE)
+validation cases              202     (123 FUNC · 59 FAIL · 13 REV · 7 SPIKE)
 validation cases with no requirement    0
 requirements with no validation case    0
 undelegated vague terms in the PRS      0
 ```
+
+The Evidence figure previously read **14**, annotated *"2 repaired in v1.2"*. A mechanical scan of the
+current artifact returns **12**, and the two figures cannot be reconciled by that annotation alone because
+v1.2 also *added* a deontic line — §0's convention statement. **The headline number was reporting a
+different artifact than the one on disk** (CR-23). Corrected to a count of the current file.
 
 The requirement↔test relation is **many-to-many by design**: `VAL-FUNC-49` verifies four predicates of
 `LEARN-06`, and `RCV-08` is verified by seven cases. The audit asserts non-emptiness in both directions,
@@ -380,12 +407,24 @@ Every literal an implementation consumes was enumerated by category and checked 
 **PRS**, not merely somewhere in the set. A literal reachable only from Evidence is a defect: it means an
 implementer must retrieve a semantic fact from a document that is not the contract.
 
+**Re-enumerated from zero on 2026-08-27 (CR-23).** The previous `108/108` was carried forward across the
+v1.1 and v1.2 deltas without re-running, although both added inputs — `OSD-18`'s 100 ms, `MSP-08`'s 10 Hz
+floor, `CTRL-04`'s primitive cardinality, `PAIR-06`'s cache content classes and `SETUP-28`'s frame structure
+among them. **Incrementing a carried-forward total would have been wrong in both directions**, since some
+v1.0 inputs were replaced rather than supplemented, so the count below is a fresh enumeration.
+
 ```
-conformance inputs enumerated  108
-present in the PRS             108
+conformance inputs enumerated  114
+present in the PRS             113
 evidence-only (defects)          0
-absent from both                 0
+absent from both                 1   ← Betaflight ARM permanent box ID (CR-24)
 ```
+
+The nine `MSP_SET_*` / `MSP2_INAV_SET_*` identifiers that appear only in Evidence were checked and are **not
+defects**: each is a command the bridge is prohibited from sending, and `SAFE-03` is a **closed allowlist**,
+so an implementation needs the list of what is permitted and never the list of what is not. `ARM_DELAY_MS`
+and `MSP_RESULT_ERROR` are likewise rationale — the first for `VAL-SPIKE-06`'s arming audit, the second for
+why `OSD-08` fixes 28 bytes — and neither is consumed by the bridge.
 
 | Category | Inputs | Evidence-only |
 | --- | --- | --- |
@@ -404,8 +443,16 @@ absent from both                 0
 | Formulae | 4 | 0 |
 
 **Answer to the audit's question — *can an implementation be written correctly without retrieving any
-additional semantic fact from Evidence?* — is yes.** Evidence carries citations, derivations and
-rationale for all 108 inputs and originates none of them.
+additional semantic fact from Evidence?* — is yes for 113 of 114 inputs.** Evidence carries citations,
+derivations and rationale for those and originates none of them.
+
+**The exception is not an Evidence-only input; it is absent from both documents.** `FC-12` requires an
+`MSP_BOXIDS` lookup *"to locate the ARM box bit"* on Betaflight, and locating it means matching ARM's
+**permanent box ID** — a Betaflight constant that appears in neither the PRS nor Evidence. An implementer
+must currently retrieve it from Betaflight source unaided. **This is the first `absent from both` result any
+audit here has produced**, and it was produced by re-enumerating rather than by carrying a total forward,
+which is the argument for CR-23's rule. Left `OPEN` as CR-24 rather than filled in, because the value has
+not been read at the pinned tag and a guessed platform constant is worse than a recorded gap.
 
 ---
 
@@ -413,11 +460,35 @@ rationale for all 108 inputs and originates none of them.
 
 Run over all 201 validation cases in both directions.
 
+**Regenerated 2026-08-27 (CR-23).** The figures below are the v1.2 run plus the v1.3 re-run; the v1.2 run
+covered the reverse leg by reading cases rather than by any mechanical screen, which is how three further
+hits survived it.
+
 ```
-cases audited                                  201
-hidden requirements found (forward leg)          6   all restored, see §5b
-decorative citations found (reverse leg)         2   VAL-REV-06/FC-02, VAL-FUNC-104/FC-10
+v1.2 run   cases audited                       201
+           hidden requirements (forward leg)     6   all restored, see §5b
+           decorative citations (reverse leg)    2   VAL-REV-06/FC-02, VAL-FUNC-104/FC-10
+
+v1.3 re-run
+           (case, requirement) pairs screened  413   over all 202 cases
+           reported by external review           2   one upheld (CR-18), one rejected (CR-19)
+           found by the v1.3 screen              3   VAL-FUNC-05/FC-09, VAL-REV-01/CTRL-03,
+                                                     VAL-REV-11/FAIL-02
 ```
+
+**On the screen's usefulness — it is weak, and saying so is part of the result.** It scores lexical overlap
+between a case's prose and each cited requirement's prose, and flagged **116 of 413 pairs**. A 28 % flag rate
+is not a defect rate; `VAL-FUNC-01`/`FC-03` scores zero overlap and is perfectly entailed. **The screen
+cannot establish entailment and is not evidence of it.** What it does is order the manual reading, and the
+16 zero-overlap pairs were read individually — which is where all three hits came from. The remaining 100
+flagged pairs have **not** been read one by one, and this audit does not claim they have.
+
+Of the three: `VAL-FUNC-05` tested capability-probe degrade while `FC-09` governs unsupported *variants* — a
+different trigger reaching the same consequence, now entailed by citing `OSD-19`, which is what unifies them.
+`VAL-REV-01`'s headerless CI build proves the transport seam but not that one evaluator sits behind it, and
+it is `CTRL-03`'s **only** case, so the review was extended rather than the citation dropped. `VAL-REV-11` is
+a coverage roll-up and cannot test `FAIL-02`'s behaviour at all; `FAIL-02` moved to `VAL-FAIL-14`, which
+forces the bridge non-functional for real, and that case now runs three ways.
 
 The six were `FC-14`, `CAM-15`, `RES-10`, `LEARN-18`, `SETUP-27` and `CAM-14`. Every one had a validation
 case that was **not an orphan** — each cited two or three requirements — so the traceability audit passed them
@@ -572,6 +643,136 @@ independent, immediately runnable and hardware-ready, so gating buys no schedule
 specifies the negative-probe fallback, which gating would convert into a release blocker for the GoPro
 product.
 
+### CR-24 — a conformance input is absent from both documents · **OPEN**
+
+`FC-12` requires a Betaflight `MSP_BOXIDS` lookup *"to locate the ARM box bit"*. The lookup returns permanent
+box IDs in the order their bits appear in `MSP_STATUS`'s flight-mode flags, so locating ARM means knowing
+**ARM's permanent box ID** — and that constant is in neither the PRS nor Evidence.
+
+**Not filled in here.** The value has not been read at Betaflight `2025.12.5`, and a platform constant
+asserted without reading its source is exactly the class of claim `SCOPE-02` and the Evidence citation
+discipline exist to prevent. **It shall be read at the pinned tag, recorded as a platform fact and cited
+from `FC-12`, before implementation reaches the maintenance-gesture interlock (`SETUP-09`).**
+
+Scope is narrow: the input is needed only on Betaflight and only where a Maintenance Entry AUX is
+configured, so it blocks `SETUP-05`, not the control path. It is the first `absent from both` result these
+audits have produced.
+
+### CR-25 — three further decorative citations · **CLOSED in v1.3**
+
+Found by the regenerated audit 6 reverse leg, not by external review. Dispositioned individually in §4b:
+`VAL-FUNC-05`/`FC-09` repaired at the citation (`OSD-19` added), `VAL-REV-01`/`CTRL-03` repaired by extending
+the review because it is that requirement's only case, and `VAL-REV-11`/`FAIL-02` repaired by moving the
+requirement to a case that can fail it.
+
+**The pattern across all five reverse-leg hits found so far is one thing:** a case cites the requirement its
+*subject matter* belongs to rather than the requirement its *pass criterion* would falsify. Traceability
+scores that as coverage. Nothing else does.
+
+### CR-15 — armed state gated the OSD on one backend and not the other · **CLOSED in v1.3**
+
+Source §9 and §10.1 both recorded that their OSD handler is unguarded while armed, and **both were
+dispositioned `E`**. `OSD-07` retained the statement anyway; `OSD-08` did not. `VAL-FUNC-09` then cited both
+and was Req/Req, so the case was **unentailed on INAV** — the CR-08 pattern exactly: *test requires X, cited
+requirement does not say X, Evidence contains X* (`PF-INAV-10`).
+
+**The repair is not the symmetric sentence.** *"Writes are accepted while armed"* is a property of the FC,
+not an obligation the PRS can impose on it — `OSD-07` was stating a platform fact inside a requirement, so
+patching `OSD-08` to match would have made both backends state a fact and neither state a duty. `OSD-19` now
+carries the bridge-side obligation once, for both backends: **armed state is not a term in
+`osdBackendEnabled`, and no OSD write may be suppressed because the FC reports armed.** `OSD-08` separately
+regains the platform fact with its `PF-INAV-10` citation, so the two backends read symmetrically.
+
+This is `FC-11` under-reaching: it enumerated camera control, BLE reconnect policy and setup as the surfaces
+where armed state is not an input, and **OSD writes are a fourth surface it never named.**
+
+### CR-16 — Validation restated a release gate that `REL-01` calls defective · **CLOSED in v1.3**
+
+The Validation header declared *"this document contains no requirements"* and then stated one: a release gate
+naming `VAL-FUNC-*` and `VAL-FAIL-*` only. `REL-01` names that exact formulation as the defect it exists to
+fix — it would let all 22 `VAL-REV-*`-only requirements fail while the release passed. The restatement was
+correct when written and was **not updated when CR-05's successor amended `REL-01` in v1.1**.
+
+**A restatement is a second home for a normative rule, and second homes go stale silently.** The header now
+points at `REL-01` and states nothing itself.
+
+### CR-17 — `PAIR-11`'s completion criterion referenced a parameter that did not exist · **CLOSED in v1.3**
+
+`PAIR-11` required a scan to run to *"a stated minimum scan duration, or the `PAIR-03` bound, whichever comes
+first"*. **No minimum scan duration is stated anywhere in the specification** — one occurrence, inside
+`PAIR-11` itself. And *"whichever comes first"* is vacuous: any minimum below the 30 s bound is always first,
+so the entire criterion rested on the undefined value. An implementation could set it to 100 ms and satisfy
+the text while restoring the first-hit behaviour `PAIR-11` was written to prohibit.
+
+`PAIR-12` now names the dwell and delegates its value to `VAL-SPIKE-07` via `REL-02`. **No number was
+invented.** The interim value is the `PAIR-03` bound — the longest the specification permits, and the only
+choice that cannot conclude too early — because the failure is asymmetric: too short auto-binds a stranger's
+camera (`PAIR-09`), too long makes a bench user wait.
+
+Fixing the 30 s bound as the criterion outright was considered and rejected: it would make reaching the bound
+*be* completion, leaving `SCAN_TIMEOUT` (*"scan reached its bound without completing"*) unreachable and
+`VAL-FUNC-42` untestable.
+
+### CR-18 — `VAL-FAIL-56` cited a requirement it cannot exercise · **CLOSED in v1.3**
+
+The case cited `RCV-01` (*"RX loss shall not create a camera-control transition"*) while testing RC-validity
+loss during learning. **`LEARN-05` suspends camera actuation for the whole of a learning operation**, so
+there is no camera-control transition available to create and `RCV-01` cannot fail there. Replaced with
+`LEARN-17`, which is what the case actually checks: acquisition timeout returns to idle and changes no
+configuration.
+
+### CR-19 — `VAL-FUNC-30`'s `CTRL-26` citation was reported decorative and is not · **CLOSED: finding rejected**
+
+External review recommended removing `CTRL-26` from `VAL-FUNC-30` or adding a Betaflight test, arguing the
+case's Req marking on INAV proved the citation decorative because `CTRL-26` is `[BF]`-only.
+
+**The argument inverts.** `CTRL-26`'s normative content is a prohibition — *"no advisory behaviour shall
+depend on it"* — and `MSP_MODE_RANGES_EXTRA` does not exist in INAV 8.0.1. **The INAV run is therefore the
+only test of that prohibition**: an advisory that depended on the command fails there and nowhere else.
+Removing the citation would have deleted the sole coverage of `CTRL-26`.
+
+Recorded rather than dismissed, because the case *text* did not say this and a future reviewer would reach
+the same wrong conclusion. The text now states what the INAV column proves. **The finding was wrong; the
+observation that produced it was not.**
+
+### CR-20 — `VAL-FUNC-11` entailed nothing from the requirement it cited · **CLOSED in v1.3**
+
+The case tests that `MSP_RC` returns live AUX values while armed; `CTRL-12` says only that the bridge reads
+FC-effective values through `MSP_RC` on both platforms, and says nothing about armed state.
+
+Unlike CR-15, **no requirement was missing.** The tested statement is a platform property, and the
+requirement that depends on it is `FC-13` — armed-invariance is unsatisfiable if the platform stops
+reporting live values while armed. Repaired at the citation. **An entailment failure does not imply a lost
+requirement, and repairing every one with a new requirement would inflate the contract with platform facts.**
+
+### CR-21 — a §1 disposition understated what the PRS kept · **CLOSED in v1.3**
+
+§1 row 9 dispositioned source §9's armed-behaviour prose as `E`, but `OSD-07` retained the statement. The
+row is now `R+E` with its prior value shown. Found while diagnosing CR-15, and it is the reason CR-15 read
+as a §24-wholesale residue at first: **the ledger said both platforms' armed prose went to Evidence, and one
+of them had not.**
+
+### CR-22 — the ledger asserted an equivalence it elsewhere retracted · **CLOSED in v1.3**
+
+Two statements, both wrong and mutually reinforcing. The Purpose block opened *"This document is the evidence
+that the compression was lossless"* while §6 recorded the compression as **NOT EQUIVALENT**; and §6 itself
+said *"Met after the v1.2 delta of §5b"*, which cannot be true of a criterion scoped to the compression
+boundary — and doubly cannot be true of a baseline that `X`-removed a source statement by decision (CR-12).
+
+Both corrected. The relationship block added in v1.2 was already right; **these two sentences contradicted
+it from above and below.**
+
+### CR-23 — audits 3 and 5 reported pre-delta figures · **CLOSED in v1.3, and the method amended**
+
+§3's boundary table still listed *"10–15 s gesture window"* after CR-03 fixed `SETUP-10` to **15.0 s**, had
+no entry for `OSD-18`'s 100 ms added by CR-06, and reported *"Delegated values: 4"* against `REL-02`'s six
+rows at the time — seven once `PAIR-12` joined them in this same delta. §4a still reported `108/108` although v1.1 and v1.2 added conformance inputs. §4b's Evidence
+deontic count read 14 where the current artifact has 12.
+
+**These blocks state the measured condition of the artifact, not the history of how it got there**, so
+carrying them forward across a delta makes them false. §5c now separates the two kinds of block, and each
+regenerated block is dated.
+
 ---
 
 ## 5a. v1.1 normative delta — applied 2026-08-26
@@ -662,15 +863,60 @@ are never parsed as commands, with each of the five framing fields rejected inde
 
 ---
 
-## 5c. Freeze
+## 5c. v1.3 audit delta — applied 2026-08-27
 
-**v1.2 is the frozen audited baseline as of 2026-08-26.** 246 requirements · 201 validation cases · 37
-platform facts · seven audits clean.
+Raised by an external re-run of all seven audits against the v1.2 artifacts rather than against this ledger's
+reported results. **It found that the v1.2 freeze was premature**: two specification defects survived, and
+four audit blocks reported figures from before the delta they followed.
 
-**Subsequent findings land as a new delta section, with their own change requests.** This audit history —
-§1's dispositions, §2's reverse audit, §4a–§4c's audit results, §5's change-request log and the §5a/§5b delta
-tables — **is not edited in place.** A ledger rewritten to match the current state stops being evidence of how
-the current state was reached, which is the one thing it exists to be.
+| # | Change | Where | Kind |
+| --- | --- | --- | --- |
+| 1 | Ledger Purpose no longer claims the compression was lossless | §Purpose | contradiction (CR-22) |
+| 2 | §6 acceptance reads **NOT MET**; *"met after the v1.2 delta"* removed | §6 | contradiction (CR-22) |
+| 3 | Validation header defers to `REL-01` and states no gate of its own | Validation §0 | stale restatement (CR-16) |
+| 4 | `OSD-19` — armed state is not a term in `osdBackendEnabled`, on either backend | `OSD-19` | **specification defect** (CR-15) |
+| 5 | `OSD-08` regains the armed platform fact `OSD-07` already carried | `OSD-08` | symmetry (CR-15) |
+| 6 | `PAIR-11` completes on the `PAIR-12` dwell; *"whichever comes first"* removed | `PAIR-11` | **specification defect** (CR-17) |
+| 7 | `PAIR-12` — discovery dwell, delegated, interim value = `PAIR-03` bound | new | new requirement (CR-17) |
+| 8 | `REL-02` gains the discovery-dwell row | `REL-02` | registry (CR-17) |
+| 9 | `VAL-SPIKE-07` — closes `PAIR-12` by measuring the camera, not the bridge | new | new case (CR-17) |
+| 10 | `VAL-FUNC-09` cites `OSD-19` and tests that the bridge *issues* the armed write | `VAL-FUNC-09` | entailment (CR-15) |
+| 11 | `VAL-FUNC-11` cites `FC-13` | `VAL-FUNC-11` | entailment (CR-20) |
+| 12 | `VAL-FUNC-30` states what its INAV column proves about `CTRL-26` | `VAL-FUNC-30` | clarity (CR-19) |
+| 13 | `VAL-FUNC-121` runs the full `PAIR-12` dwell, at whatever value it holds | `VAL-FUNC-121` | entailment (CR-17) |
+| 14 | `VAL-FAIL-56` cites `LEARN-17`, not `RCV-01` | `VAL-FAIL-56` | decorative citation (CR-18) |
+| 15 | §1 row 9 disposition `E` → `R+E` | §1 | ledger accuracy (CR-21) |
+| 16 | §3 boundary table regenerated | §3 | stale audit (CR-23) |
+| 17 | §4a conformance inventory re-enumerated from zero | §4a | stale audit (CR-23) |
+| 18 | §4b figures regenerated; two further reverse-leg hits dispositioned | §4b | stale audit (CR-23) |
+| 19 | `VAL-FUNC-05` cites `OSD-19` — probe-failure degrade is entailed, not assumed | `VAL-FUNC-05` | decorative citation (CR-25) |
+| 20 | `VAL-REV-01` extended to confirm one shared evaluator, not just the seam | `VAL-REV-01` | decorative citation (CR-25) |
+| 21 | `FAIL-02` moved from a coverage roll-up to `VAL-FAIL-14`, which can fail it | `VAL-REV-11`, `VAL-FAIL-14` | decorative citation (CR-25) |
+| 22 | CR-24 opened — Betaflight ARM permanent box ID absent from both documents | `FC-12` | **open finding** |
+| 23 | Word counts, traceability figures and PRS status header refreshed | §Purpose, §4, PRS header | bookkeeping |
+
+**One reported finding was rejected** — `VAL-FUNC-30`/`CTRL-26`, recorded as CR-19 with the argument, because
+the reasoning that produced it will recur. **Two were reclassified**: the INAV OSD loss was reported as
+residue of the §24 wholesale disposition and is not — both platforms' armed prose came from body prose
+dispositioned `E` (CR-15, CR-21) — and `VAL-FUNC-11` was reported as a missing requirement and is a missing
+citation (CR-20).
+
+### 5d. Freeze rule
+
+**Two kinds of block live in this ledger and they are not governed by the same rule.**
+
+**Historical — never edited in place.** §1's dispositions, §2's reverse audit, §5's change-request log and
+every delta table. These record *how the current state was reached*. A correction to one is annotated with
+its prior value and names the CR that made it (§1 row 9 is the worked example); it is never silently
+overwritten.
+
+**Measured — regenerated at every delta, and dated.** §3's boundary table, §4's traceability figures, §4a's
+conformance inventory and §4b's entailment counts. These state *the condition of the artifact now*. Carrying
+one forward unchanged across a delta does not preserve history; it publishes a false measurement, which is
+what CR-23 was.
+
+**A delta is not complete until every measured block has been regenerated from the current artifacts.** The
+v1.2 delta was declared complete without that step, which is why it froze on four stale numbers.
 
 ---
 
@@ -679,7 +925,14 @@ the current state was reached, which is the one thing it exists to be.
 > *Compression succeeds only when the shorter specification admits exactly the same conforming
 > implementations as the audited source specification.*
 
-**Not met at the compression boundary as originally published. Met after the v1.2 delta of §5b.**
+**NOT MET.**
+
+This criterion is scoped to the compression boundary alone (compression rule §7), and at that boundary it
+failed. **A later delta cannot retroactively satisfy it** — v1.2 repaired six of the seven losses and
+`X`-removed the seventh by product decision, so v1.2 does not admit the source's set of conforming
+implementations either, and is not intended to. **v1.2 and v1.3 are new baselines, not equivalent
+compressions.** Corrected in v1.3 (CR-22): the previous wording said *"met after the v1.2 delta"*, which is
+incoherent under this criterion and contradicted the relationship block below.
 
 **The original claim was false, and is retracted rather than qualified.** Seven statements that constrain a
 conforming implementation were absent from the contract: six restored by §5b, one (`CR-12`) deliberately
