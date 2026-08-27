@@ -30,7 +30,23 @@ control-path and version-floor citations re-read on 2026-08-26.
 **Standing rule.** Line numbers are the part of this document set most likely to rot, and the part
 most likely to be regenerated from memory rather than read. Re-verification before each release means
 **opening the file at the pinned tag**, not recalling it — and a citation that is right on `master` is
-still wrong here. Reading source also means reading the **code, not the comments**: Betaflight's
+still wrong here.
+
+**How a citation is produced, added in v1.8 (CR-50).** From v1.8 onward every new or changed citation is
+generated from a **pinned checkout with a line-numbering tool**, and the invocation is recorded:
+
+```
+git clone --depth 1 --branch <tag> <repo> <dir>
+git -C <dir> describe --tags                 # confirm the tag actually checked out
+git -C <dir> show HEAD:<path> | grep -n <pattern>
+```
+
+Reading from the object store rather than the working tree is deliberate: a partial or case-folded checkout
+can leave a plausible file on disk. **This rule exists because the paragraph above was already true and was
+still not enough** — it said what re-verification *means* and never named a tool, so compliance was asserted
+rather than checkable, and `PF-BF-23` was recorded from numbers nobody had opened. **The scope is
+prospective**; the existing corpus is re-verified under the pre-release rule above, not regenerated now. A
+handful of `grep -n` invocations settle one fact and establish nothing about the others. Reading source also means reading the **code, not the comments**: Betaflight's
 `failsafe.c` contains comments that its own reset template contradicts (`PF-BF-11`).
 
 Forward compatibility against `master` is a separate audit, and its findings are recorded as version notes
@@ -412,14 +428,23 @@ stated in the PRS.** Added 2026-08-27, closing CR-44 — a platform-dependent re
 platform fact. **One fact, both platforms**, following `PF-BF-04`: the behaviour is identical on each, so it
 is recorded once rather than split the way `PF-BF-02`/`PF-INAV-01` are for a value that differs.*
 
-[BF] `msp/msp_protocol.h:158-164` (definition at `:163`); `msp/msp.c:1209-1213`.
-[INAV] `msp/msp_protocol.h:209-216` (definition at `:215`); `fc/fc_msp.c:588-592`.
+[BF] `msp/msp_protocol.h:176`; `msp/msp.c:1317-1321`.
+[INAV] `msp/msp_protocol.h:238`; `fc/fc_msp.c:621-625`.
+
+> **Version note — all four line numbers were wrong from 2026-08-27 until they were checked (CR-50).**
+> This fact was first recorded citing `msp_protocol.h:163` / `msp.c:1209-1213` and `:215` /
+> `fc_msp.c:588-592`, from numbers supplied in review and never opened. Resolved by shallow checkouts at
+> `2025.12.5` and `8.0.1`, read out of the git object store (`git show HEAD:<path>`), and **every one of the
+> four differed.** The figures above are that reading. **The v1.0 source document's citations —
+> `msp_protocol.h:176`, `msp.c:1317-1321`, `fc_msp.c:621-625` — were correct all along**, and this fact
+> silently overwrote three of them. Nothing in the conclusion below changes: both loop bodies were confirmed
+> verbatim at the corrected lines.
 
 Both pinned platforms define **`MSP_RC = 105`**, and both serialize the response as a bare sequence of U16
 channel values with **no count field, no header and no terminator**:
 
 ```c
-/* [BF] msp/msp.c:1209-1213 */              /* [INAV] fc/fc_msp.c:588-592 */
+/* [BF] msp/msp.c:1317-1321 */              /* [INAV] fc/fc_msp.c:621-625 */
 case MSP_RC:                                case MSP_RC:
   for (int i = 0; i <                         for (int i = 0; i <
        rxRuntimeState.channelCount; i++) {         rxRuntimeConfig.channelCount; i++) {

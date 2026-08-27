@@ -1,27 +1,44 @@
 # Action Camera Bridge — Product Requirements Specification
 
-**Status:** **v1.7 — audited baseline, 2026-08-27.** 247 requirements, 203 validation cases, 39 platform
-facts, **464 case↔requirement relations** under the unit defined in Ledger §4b.
+**Status:** **v1.8 — audited baseline, 2026-08-27.** 251 requirements, 207 validation cases, 39 platform
+facts, **489 case↔requirement relations** under the unit defined in Ledger §4b. Every figure here was
+re-derived from disk after audit 7 passed, by tools sharing one definition set (CR-49).
 
 **Audit status is stated per audit, because it differs per audit.** v1.3 claimed seven audits re-run when
 four had run; v1.4 called audit 6 complete on 27 % of its relations; v1.5 reported a relation total produced
 by an undefined counting unit (CR-26, CR-38, CR-45).
 
-| Audit | State at v1.6 |
+| Audit | State at v1.8 |
 | --- | --- |
 | 1 · requirement-equivalence | **historical.** Scoped to the compression boundary, a past event; not re-runnable, and §1's dispositions are the record |
 | 2 · reverse | **historical**, same scope |
-| 3 · boundary-value | **re-run, clean.** A third regeneration pass added in v1.7 for *derivations* — rules that fix a quantity without stating one, which the literal and closure passes were both blind to (CR-47) |
-| 4 · traceability | **re-run, clean.** Every platform-dependent requirement carries a platform fact, with **no exceptions**, for the first time since this audit existed (CR-44) |
-| 5 · conformance-input | **re-run, clean. 140/140** — no input absent or Evidence-only (CR-24, CR-37, CR-44) |
-| 6 · validation-entailment | **re-run over a defined edge set for the first time: all 464 relations read, 0 defects.** v1.5's 403 was a token count that missed a range and every spike (CR-45) |
-| 7 · internal-consistency | **re-run, clean**, including the `CTRL-18`…`CTRL-23` ↔ `MSP-08` ↔ `LEARN-04`/`LEARN-06` cluster re-derived from first principles (CR-42) |
+| 3 · boundary-value | **re-run, clean.** Three regeneration passes — literals, closures, and *derivations* added in v1.7 for rules that fix a quantity without stating one (CR-47) |
+| 4 · traceability | **re-run, clean. 0 orphan requirements under the strict relation unit**, for the first time since that unit was defined — v1.7's *"0"* was measured under the loose reading the unit had already replaced (CR-49, §6.11) |
+| 5 · conformance-input | **re-run, clean** — no input absent or Evidence-only (CR-24, CR-37, CR-44) |
+| 6 · validation-entailment | **delta-impact re-read: new edges plus every surviving edge whose requirement or case text changed; verdicts preserved for untouched edges.** Not a full re-read of all 489, and recorded as what it was (CR-38) |
+| 7 · internal-consistency | **re-run whole, two findings, both closed** — `OSD-19`'s terms had no stated polarity and `LEARN-04`'s sample arithmetic no stated precondition, so each agreed with `FC-15` and `MSP-09` only by interpretation (CR-55) |
 
-**Open: CR-11 only, by decision.** Every finding raised against these artifacts is closed.
+**Open: CR-52 only** — the MSP transaction deadline is `OPEN` in `REL-02` pending a measurement that does
+not exist yet, and the change record stays open until the write-back. **CR-11 is closed**: it had been
+deferred by decision since 2026-08-26, and its own text set the trigger, *"before implementation reaches
+`FC-05`."*
 
-**One structural defect worth knowing about, because nothing mechanical caught it:** v1.5 deleted Evidence's
-`## 2. INAV platform facts` heading through an anchored edit, and every INAV fact sat under the Betaflight
-heading for two deltas. Restored, and the verifier now checks section numbering (CR-48).
+**What v1.8 was, in one line:** an unsupported FC variant no longer drives a camera (CR-11); every spike's
+`Verifies:` line is derived from its pass criteria rather than authored (CR-49); an MSP request can now be
+declared failed (CR-52); an FC that never answers is a named state with a local indicator (CR-53).
+
+**Three things worth knowing, because nothing mechanical caught them:**
+
+- **A citation can be wrong for two deltas and survive everything.** `PF-BF-23`'s four coordinates were all
+  wrong, recorded from numbers supplied in review and never opened; three audits, a structural verifier and
+  three review rounds passed over them. Settled from pinned checkouts — and the **v1.0 source it had
+  overwritten was right all along** (CR-50).
+- **A requirement can be credited with content it never had.** The one-outstanding-transaction invariant was
+  attributed to `MSP-01` across several review rounds; a full-set search found no such requirement anywhere.
+  `MSP-09` now states it (CR-52).
+- **Audit tools that agree are not necessarily measuring the same thing.** Two counted the requirement set
+  with two different grammars and agreed by coincidence. One shared definition module now backs all of them,
+  and it fails closed on an unknown requirement family or a locally spelled extractor (CR-49).
 
 **What this claims, and what it does not.** Every relation was read and none failed — a stronger result than
 any earlier delta, and still one careful pass by one reader. v1.5 read 110 relations carefully and misjudged
@@ -35,9 +52,9 @@ Subsequent findings — including Osmo Nano / DUML results — land as a new del
 **Historical ledger blocks are not edited in place; measured blocks are regenerated at every delta** (§5d).
 Compressed from PRS v1.0 (`action-camera-bridge-prs-source-v1.0.md`,
 sha256 `e6178686acfa71e932784cf44041a988f9d72e8ff64162c89588bce8a700b473`) under the compression rule
-of 2026-08-26, **plus the separately reviewed v1.1, v1.2, v1.3, v1.4, v1.5, v1.6 and v1.7 deltas, recorded
-in Traceability Ledger §5a, §5b, §5c, §5e, §5f, §5g and §5h respectively.** *(§5d is the freeze rule, not a
-delta — which is why the range shorthand this replaced was wrong.)* **No requirement change was intended at the compression boundary; seven
+of 2026-08-26, **plus the separately reviewed v1.1 through v1.8 deltas, recorded in Traceability Ledger
+§5a, §5b, §5c, §5e, §5f, §5g, §5h and §5i respectively.** *(§5d is the freeze rule, not a delta — which is
+why the range shorthand this replaced was wrong.)* **No requirement change was intended at the compression boundary; seven
 source obligations were nevertheless lost there** (Ledger §6, which records the acceptance criterion as
 NOT MET). The deltas since have changed requirements deliberately, and each change is itemised. Every
 disposition is recorded in the Ledger.
@@ -80,9 +97,11 @@ is stated **here**, and Evidence carries only its citation and derivation.
 
 ### 0.2 Version contract — normative
 
+**SCOPE-01 — the supported version contract.**
+
 ```
-SCOPE-01   Minimum supported:  Betaflight 2025.12.5      INAV 8.0.1
-           Target family:      Betaflight 2025.12.5+     INAV 8.0.1+ within 8.x
+Minimum supported:  Betaflight 2025.12.5      INAV 8.0.1
+Target family:      Betaflight 2025.12.5+     INAV 8.0.1+ within 8.x
 ```
 
 These are the same versions as the citation baseline for all platform evidence. Earlier patch
@@ -92,6 +111,16 @@ release (`PF-BF-01`).
 
 **SCOPE-02.** Newer releases are targeted but require forward-compatibility validation before support
 is claimed. A pass on a newer build is evidence about that build only.
+
+**Validation does not widen `SCOPE-01`; a reviewed scope change does.** The order is fixed:
+
+```
+forward-compatibility validation  →  reviewed SCOPE-01 delta  →  the release that supports it
+```
+
+A build that passes validation is **still unsupported** until `SCOPE-01` is amended. Without this
+ordering, `SCOPE-01` would read *"within 8.x"* while a validated INAV 9 was in service, which is the
+contradiction `FC-05`'s ceiling exists to prevent (CR-11).
 
 ---
 
@@ -234,16 +263,25 @@ identify FC → supported variant? → version floor? → capability probe → n
 The version floor shall precede capability probing. A capability probe answered by an out-of-contract
 build is not evidence that the build behaves as this document describes.
 
-**FC-05 — version floor.** Betaflight below **2025.12.5** and INAV below **8.0.1** shall enter
-`UNSUPPORTED_FC_VERSION`. In that state **no camera-control input shall be acted on and no
+**FC-05 — version floor *and ceiling*.** Betaflight below **2025.12.5** and INAV below **8.0.1**
+shall enter `UNSUPPORTED_FC_VERSION`. **So shall any INAV whose major version is not 8**, because
+`SCOPE-01` bounds INAV support to *"8.0.1+ within 8.x"* and a floor alone admits INAV 9 (CR-11):
+
+```
+[BF]    supported  iff  triple >= 25.12.5
+[INAV]  supported  iff  major == 8  AND  triple >= 8.0.1
+```
+
+The Betaflight line is deliberately open-ended, matching `SCOPE-01`'s *"2025.12.5+"*, because that
+line's calendar versioning carries no major-family boundary to enforce. In that state **no camera-control input shall be acted on and no
 platform-specific OSD write shall be issued**. Identification, setup, diagnostic and firmware-update
 functions remain available, and the state shall be surfaced to the user with the detected and required
 versions. Every OSD-write obligation in this document is subject to `OSD-19`, which is where this
 prohibition is made to bind.
 
 **FC-06 — what is compared.** Both platforms answer `MSP_FC_VERSION` with three unsigned bytes. The
-bridge shall compare that byte triple lexicographically against the floor and shall **not** parse the
-version string. The parser shall tolerate a payload longer than three bytes, because Betaflight
+bridge shall compare that byte triple lexicographically against the floor — and **[INAV]** shall
+additionally require `major == 8` (`FC-05`) — and shall **not** parse the version string. The parser shall tolerate a payload longer than three bytes, because Betaflight
 appends a Pascal string that INAV does not send (`PF-BF-04`).
 
 ```
@@ -261,19 +299,36 @@ and OSD capability shall not be inferred from the version alone.
   **not** evidence that the target renders an OSD (`PF-BF-05`); that is confirmed once on the bench
   (`VAL-SPIKE-01`). The version floor is the whole programmatic test on this platform.
 
-**FC-08 — the two degraded states are distinct and shall not be conflated.**
+**FC-08 — the post-identification outcomes are distinct and shall not be conflated.** Every state
+below is decided *after* identification completes; failure to complete identification at all is
+`FC-15`'s `FC_NOT_IDENTIFIED` and is not in this table.
 
 | State | Trigger | Camera control | Platform OSD writes |
 | --- | --- | --- | --- |
-| `UNSUPPORTED_FC_VERSION` | `FC-05` floor not met | **suppressed** | none, per `OSD-19` |
-| telemetry-disabled compatibility | supported version, no OSD capability | active | none, per `OSD-19` |
+| normal | supported variant, version and OSD capability | active | active |
+| telemetry-disabled compatibility | supported variant and version, no OSD capability | active | none, per `OSD-19` |
+| `UNSUPPORTED_FC_VERSION` | `FC-05` floor not met, or outside the supported major | **suppressed** | none, per `OSD-19` |
+| `UNSUPPORTED_FC_VARIANT` | `MSP_FC_VARIANT` is neither `"BTFL"` nor `"INAV"` | **suppressed** | none, per `OSD-19` |
 
 **The camera-control column is this requirement's own; the OSD column is `OSD-19`'s**, shown here because
-the states are otherwise easy to conflate. Both states clear a term of `osdBackendEnabled`, so neither writes
-the OSD — and that consequence is stated once, in `OSD-19`, not three times (v1.4, CR-29).
+the states are otherwise easy to conflate. Each degraded state clears a term of `osdBackendEnabled`, so none
+writes the OSD — and that consequence is stated once, in `OSD-19`, not three times (v1.4, CR-29).
 
-**FC-09.** Unsupported FC variants shall enter telemetry-disabled compatibility mode and shall not
-send platform-specific OSD writes.
+**FC-09 — an unsupported variant suppresses camera control.** An FC whose `MSP_FC_VARIANT` is neither
+`"BTFL"` nor `"INAV"` shall enter `UNSUPPORTED_FC_VARIANT`: **no camera-control input shall be acted on
+and no platform-specific OSD write shall be issued.** Identification, setup, diagnostic and
+firmware-update functions remain available, and the state shall be surfaced to the user with the
+detected variant string.
+
+**Why this is not telemetry-disabled compatibility, which is what it used to be (CR-11).** That state
+leaves camera control **active**, and the entire `RCV-*` qualification model — the guarded commit,
+`armingDisableFlags`, `ARMING_DISABLED_RC_LINK` — is built on Betaflight and INAV mechanics.
+**An unrecognised variant has no audited RC-validity or failsafe semantics**, so the bridge cannot know
+whether a value read from `MSP_RC` is live, held or substituted. Driving a camera from it was the one
+place this specification let an unaudited platform reach an actuator.
+
+`OSD-19` needed no change: `FC-09` was already a term of `osdBackendEnabled`, so the OSD half was
+always right. Only the camera-control half was wrong.
 
 **FC-10.** The bridge shall track FC family, FC firmware version, MSP/API version and available OSD
 capabilities, **and shall expose all four through the setup and host interfaces** — a field tracked but never
@@ -323,6 +378,28 @@ FC-side remap of ARM or box IDs, and without user action**.
 `FC-03`'s *"at startup"* is the **bridge's** startup; this requirement governs the **FC's**. Re-detection is
 the event `RCV-15` restarts the condition-B grace clock on, and `RCV-14` governs the requalification that
 follows — so an FC reboot mid-flight reconciles level controls and emits no edge.
+
+**FC-15 — an FC that never finishes identifying.** If **no complete FC identity** (`FC-03`) has been
+obtained within **2.0 s** of the first identification request, the bridge shall enter
+**`FC_NOT_IDENTIFIED`**.
+
+**The predicate is completion, not silence.** A partially responding FC — `MSP_API_VERSION` answers,
+`MSP_FC_VARIANT` never does — *is* responding, so a no-response timer would never expire while
+identification never finishes. **Individual replies shall not reset the 2.0 s clock.**
+
+In that state the bridge shall act on **no camera-control input** and issue **no OSD write** — `SAFE-04`
+makes the two OSD text injections the only writes there are, and identification's MSP *reads* necessarily
+continue. The state shall be surfaced on the local indicator (`IND-01`), because there is no OSD to surface
+it on: `OSD-19`'s backend was never enabled, having never been probed.
+
+**Retry and recovery.** Identification retries under `MSP-09`'s post-terminal rule. **Exit only** when a
+complete sequence resolves to one of `FC-08`'s outcomes — supported FC, `UNSUPPORTED_FC_VERSION`, or
+`UNSUPPORTED_FC_VARIANT` — and **camera control stays suppressed until the whole
+`FC-03 → FC-05 → FC-07 →` qualification chain has succeeded**. Recovery requires no user action beyond
+enabling MSP on the FC UART, and **the bridge shall not require a reboot** to pick it up.
+
+**2.0 s is wall-clock and deliberately independent** of `MSP-09`'s `OPEN` deadline and of the retry
+interval, so tuning MSP timings later cannot move a user-visible transition.
 
 ---
 
@@ -773,9 +850,15 @@ state transition (`CAM-04`) or locally determines a bridge warning or mode/state
 `BOOT-14`), the **changed** OSD content shall be submitted to the FC within **100 ms**.
 
 This bounds **the bridge's contribution only.** Latency beyond the MSP write belongs to the FC, the VTX and
-the display system, and is not the bridge's to bound. 100 ms is one poll period at the 10 Hz control rate,
-so the MSP task shall be able to interleave an OSD write between control polls rather than queueing it
-behind a full poll cycle (`MSP-07`).
+the display system, and is not the bridge's to bound.
+
+*Non-normative rationale.* 100 ms is one poll period at the 10 Hz control rate, so an implementation
+generally cannot meet this bound by queueing an OSD write behind a full poll cycle. **How it avoids that is
+an implementation matter and is not required here** (CR-54): this clause previously read *"the MSP task
+**shall** be able to interleave an OSD write between control polls"*, which made a scheduling mechanism
+normative and left the requirement depending on a task model no requirement defines. The obligation is the
+observable one — changed content submitted within 100 ms — and `VAL-FUNC-115` measures exactly that, at
+`MSP-01`'s worst-case load.
 
 Unchanged periodic fields remain subject to `OSD-05`'s rate limits, and **the recording timer's ≤ 1 Hz rate
 is deliberately not a state-transition latency** — a ticking timer is not a state change.
@@ -872,6 +955,13 @@ Where it is false the bridge shall present the same information through the setu
 issue **no** platform OSD write. This is the single place that resolves `FC-05`'s and `FC-09`'s prohibitions
 against the otherwise unconditional obligations above: **the prohibitions win**, and an implementation needs
 one flag rather than a per-requirement judgement call.
+
+**Each term is false until positively established.** Before identification completes there is no supported
+variant, no passed floor and no probed capability, so `osdBackendEnabled` is **false throughout
+`FC_NOT_IDENTIFIED`** and `FC-15`'s prohibition needs no fourth term (v1.8, CR-55). Read the other way —
+each term true unless disproved — the backend would be enabled before the FC is even known, and `OSD-09`'s
+owned-slot initialisation would fire against an unidentified FC. `OSD-09`'s *"as soon as the FC backend is
+up"* is that gate, and this sentence is what makes the two agree without interpretation.
 
 **The three terms above are exhaustive. FC armed state is not among them, on either platform**, and the
 bridge shall not suppress, defer or degrade an OSD write because the FC reports armed. Both backends'
@@ -1265,6 +1355,13 @@ LEARN-06 needs 5 qualified samples   median of 5, and max−min ≤ 20 µs over 
 250 ms at 10 Hz   →  2 samples       (200 ms buys two; five would need 500 ms)
 ```
 
+**The 20 Hz row is a guarantee only where every transaction completes within `MSP-09`'s deadline** (v1.8,
+CR-55). A timed-out poll yields no sample at all — `MSP-07` forbids synthesizing one and discards an
+incomplete bracket — so it costs an observation rather than corrupting one. **At the zero margin recorded
+below, a single lost transaction leaves the window one sample short**, and `LEARN-06` then declines
+to characterise rather than proposing a range from four. That is the correct direction of failure, and it is
+stated here because the arithmetic above reads as unconditional and is not.
+
 **`CTRL-18`'s runtime predicate and `LEARN-06`'s characterisation predicate need different numbers of
 observations, and only the first survives the fallback.** At 10 Hz a 250 ms demonstration is detectable as a
 press and **not** characterisable as a stable position, so learning at the fallback rate would reject a
@@ -1335,6 +1432,19 @@ or the user cancels.** In every one of those cases: no persistent configuration 
 **The bridge shall not depend on a client's cooperation to end a learning operation.** A closed browser leaves
 nobody to send a cancel, and a learner left active would hold `MSP_RC` at 20 Hz and camera actuation suspended
 indefinitely.
+
+**LEARN-19 — the session is a client-held lease, and this is what makes `LEARN-18` implementable.** While a
+learning operation is open the client shall refresh a lease at intervals of **≤ 1.0 s**, and the bridge shall
+treat the operation as abandoned when **3.0 s** elapse with no valid refresh. Explicit cancel and an observed
+session loss abandon it immediately; lease expiry abandons it without either. **The transport is not specified
+here** — a WebSocket lifetime, a server-sent-event stream or a plain heartbeat all satisfy this — only the
+bounded detection is required.
+
+**Why a lease rather than a connection.** `LEARN-18` requires abandonment when *"the page is closed"*, and
+**no network-layer fact reports that**: a phone stays associated to the access point, and a TCP socket may
+linger well past the tab that opened it. Only something the client must keep doing distinguishes a live page
+from a closed one, which is why the bound is stated as a refresh interval and a timeout rather than as a
+disconnect (CR-54).
 
 **LEARN-08.** **Nominal transmitter values of exactly 1000, 1500 or 2000 µs shall not be assumed.** For a
 multi-position switch the interface may guide the user through each position, record the observed stable
@@ -1613,6 +1723,35 @@ A target that cannot satisfy `CTRL-18` and `CTRL-23` at 10 Hz **shall not offer 
 and setup shall state their unavailability, rather than offering a control that misses presses. **The validity
 bracket shall never be weakened, at any rate.**
 
+**MSP-09 — when a transaction is failed, and what follows.** Three requirements already turn on being able
+to declare an MSP request failed — `RCV-10` extends a qualification interval per *"unanswered or failed"*
+transaction, `MSP-06` requires tolerating *"a missing or late reply"*, `MSP-07` treats an incomplete bracket
+as a failed one — and **nothing said when that happens** (CR-52).
+
+**The concurrency invariant, stated here because nothing else states it.** **At most one MSP transaction
+shall be outstanding at a time.** This was assumed by `MSP-01`'s poll table, by `MSP-07`'s bracket and by
+every retry rule in this document, and was written down in none of them.
+
+**The transaction deadline is `OPEN`** (`REL-02`). It depends on measured FC reply latency, which no
+evidence in this document supplies:
+
+```
+measurement   VAL-SPIKE-01 reports worst-case reply latency and spread,
+              under MSP-01's worst supported load, on both pinned FCs
+closure       a reviewed decision selects the deadline from that report
+              and writes it back.  The spike does not choose the value.
+```
+
+**A deliberately loose non-conforming timeout is permitted for the measurement itself and for nothing
+else.** An implementation shall not ship a deadline that was never selected by that decision.
+
+**Retry is post-terminal, not periodic.** After a transaction terminates without success, the bridge shall
+wait a **fixed 1.0 s** before the next attempt, and **shall not start one while a transaction is still
+outstanding**. A periodic retry would race the deadline — which is `OPEN`, so it cannot be assumed shorter
+than the retry period — and break the invariant above. The interval is flat rather than exponential;
+`MSP-06` requires only that failed requests back off and never retry-storm, and a bounded flat interval
+satisfies both while staying independent of whatever deadline the measurement produces.
+
 ---
 
 ## 14. Resource requirements
@@ -1717,7 +1856,8 @@ is entered.
 **INST-01.** Target installation is four solder joints and one spare UART:
 
 1. Connect 5 V, ground, TX and RX (observing `FC-02`).
-2. Enable MSP on the selected FC UART.
+2. Enable MSP on the selected FC UART. **If the indicator shows `FC_NOT_IDENTIFIED` (`IND-01`), this
+   step is the first thing to check** — the bridge cannot see *why* MSP is absent (`FAIL-01`).
 3. Enable and position the required OSD elements (`OSD-17`).
 4. Enter `SETUP` and configure camera controls by **learning** them (`LEARN-*`); verify against the
    dry-run monitor (`SETUP-20`) before enabling actuation.
@@ -1743,6 +1883,28 @@ channel configured** (`PF-BF-20`, `PF-INAV-12`); both are **non-default on both 
 they shall configure a Record control on any other AUX channel. **Setup documentation shall state the
 exception rather than presenting Arm Record as universally available, and shall not attribute it to the
 wrong platform.**
+
+**IND-01 — a local diagnostic indicator.** The bridge shall carry an **on-board** indicator and shall drive
+it as follows. This is a closed enumeration:
+
+| Local diagnostic | Indicator |
+| --- | --- |
+| no `FC_NOT_IDENTIFIED` diagnostic asserted | solid on |
+| `FC_NOT_IDENTIFIED` asserted (`FC-15`) | 200 ms on / 1000 ms off |
+
+**The mapping is keyed on an asserted diagnostic, not on total system state**, which is what makes it
+closed. *"Ordinary operation"* is **not** the complement of `FC_NOT_IDENTIFIED`: there is a window of up to
+2.0 s in which identification is in progress and the state has not been entered, and `PAIR` never runs MSP
+identification at all. Both are simply solid, and no third code is needed.
+
+**On-board, and adding no installation wiring** — `INST-01` is four solder joints and one spare UART, and an
+indicator requiring a fifth would change the product's installation contract to report a fault.
+
+**Why this exists at all.** The OSD is unreachable in precisely the state that most needs reporting: a
+bridge whose FC never answers has no backend to write through, so without a local indicator the most likely
+installation error is silent forever. **A state is added to this table only where a local-only need is
+concrete** — one code per bridge state would make every future state-machine addition a hardware
+compatibility change.
 
 ---
 
@@ -1852,7 +2014,12 @@ timing out through a qualification interval · bridge rebooted while the aircraf
 straddling an FC failsafe transition · interruption of a `PAIR` boot · a retained boot request surviving into
 an unrelated software restart · a stale setup page submitting a candidate selection · an in-flight 5 V
 interruption presenting as a power-on reset · a maintenance-protocol frame arriving outside a passthrough
-session · `DIAG` requested on a build whose peak-2 gate did not pass.
+session · `DIAG` requested on a build whose peak-2 gate did not pass · **FC MSP identification unavailable
+or incomplete**.
+
+**The last entry names an observable, not a cause.** The bridge cannot see whether MSP is disabled, on the
+wrong UART, at the wrong baud, miswired, still booting, or partially implemented — all present identically
+(`FC-15`). `INST-01` step 2 carries the diagnosis; this list carries what is observed.
 
 **FAIL-02.** The FC shall continue operating normally with the bridge electrically connected but completely
 non-functional (`SAFE-06`).
@@ -1888,6 +2055,7 @@ defect.**
 | Minimum free internal heap | `RES-03` | ≥ 32 KiB | **PROVISIONAL** | `VAL-SPIKE-03` |
 | Largest allocatable block | `RES-03` | ≥ 16 KiB | **PROVISIONAL** | `VAL-SPIKE-03` |
 | Retained-request mechanism | `BOOT-05` | retained RAM | **CONDITIONAL** | `VAL-SPIKE-05` |
+| MSP transaction deadline | `MSP-09` | — | **OPEN** | measurement: `VAL-SPIKE-01`; closure: reviewed CR-52 write-back |
 
 **The rule.** **No release may claim a feature whose applicable parameter is unresolved.** Specifically, no
 claimed feature shall ship with an applicable parameter that is `OPEN`; with an applicable `PROVISIONAL` value

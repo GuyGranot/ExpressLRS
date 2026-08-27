@@ -462,6 +462,32 @@ the failure mode the whole citation discipline exists to prevent.
 
 ---
 
+### 6.11 A unit definition can falsify claims it was never applied to
+
+**Added in v1.8, from CR-49.**
+
+v1.6 defined the relation unit — *one relation is one explicit `(case ID, requirement ID)` pair* — to repair
+a relation **count** that had been produced by an undefined token-counting method (CR-45). It did that
+correctly. What nobody checked is that **other published figures had been measured under the loose reading
+the new unit replaced.**
+
+Audit 4's *"requirements with no validation case: 0"* was one of them. Under the loose reading — any mention
+of a requirement anywhere in a validation case counts — it was true. Under the strict unit it was **false by
+five**, and it stayed on the published header for two deltas after the unit that falsified it was adopted.
+
+**The rule.** When a delta defines or narrows a **unit of measurement**, every figure previously measured
+under the old unit is **withdrawn and re-derived**, not carried forward. A unit definition is not a local
+repair to the one figure that motivated it; it silently re-scopes every claim expressed in that unit.
+
+**The failure is invisible by construction**, which is why it needs a rule rather than attention. Nothing
+about the old figure changes when the unit changes — the number still sums, the block still regenerates, the
+verifier still passes. Only the *meaning* of the number moved, and no tool reads meaning.
+
+**What this obliges at each delta.** Before regenerating measured blocks, list the units that changed in the
+delta, and for each one enumerate every published figure expressed in it. Figures on that list are marked
+withdrawn until re-derived from disk under the new unit. **A figure that is merely still arithmetically
+consistent is not evidence** that it survived the change.
+
 ## 7. Final acceptance
 
 > **Compression succeeds only when the shorter specification admits exactly the same conforming

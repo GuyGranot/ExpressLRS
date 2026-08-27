@@ -399,25 +399,31 @@ against the previous regeneration.**
 Mechanically verified over the whole set. **Figures below are post-delta**; the parenthesised value is the
 figure at the compression boundary, before §5a.
 
-**Regenerated 2026-08-27 against the v1.7 artifacts.**
+**Regenerated 2026-08-27 against the v1.8 artifacts**, by tools sharing one definition set (CR-49).
 
 ```
-requirements defined          247     (229 at the boundary · 234 after v1.1 · 246 after v1.2 ·
-                                       247 after v1.3; v1.4-v1.7 amended, added none)
+requirements defined          251     (229 at the boundary · 234 after v1.1 · 246 after v1.2 ·
+                                       247 after v1.3; v1.4-v1.7 amended, added none;
+                                       v1.8 added MSP-09, FC-15, IND-01, LEARN-19)
 duplicate definitions           0
 gaps in ID numbering            0
 dangling requirement refs       0     (all five artifacts)
 deontic statements in Evidence 12     (audit 5b: 0 new obligations)
-platform facts defined         39     (PF-BF-22 in v1.5 closing CR-24; PF-BF-23 in v1.7 closing CR-44)
+platform facts defined         39     (PF-BF-22 in v1.5 closing CR-24; PF-BF-23 in v1.7 closing CR-44,
+                                       its four line numbers corrected in v1.8 — CR-50)
 platform-dependent reqs with
   no platform fact                0
 dangling platform-fact refs     0
 unreferenced platform facts     0
-validation cases              203     (124 FUNC · 59 FAIL · 13 REV · 7 SPIKE)
-case->requirement relations   464     (406 table-case + 58 spike, one explicit pair each;
-                                       all read semantically in v1.6, 0 defects — CR-45)
+validation cases              207     (125 FUNC · 60 FAIL · 15 REV · 7 SPIKE)
+case->requirement relations   489     (417 table-case + 72 spike, one explicit pair each — CR-45)
+audit-6 coverage in v1.8              delta-impact: new edges plus every surviving edge whose
+                                       requirement or case text changed (CR-38); verdicts
+                                       preserved for untouched edges. NOT a full re-read.
 validation cases with no requirement    0
-requirements with no validation case    0
+requirements with no validation case    0     under the STRICT relation unit, for the first
+                                       time since that unit was defined. v1.7's `0` was
+                                       measured under the loose reading (CR-49, §6.11)
 undelegated vague terms in the PRS      0
 ```
 
@@ -530,12 +536,16 @@ either** — no `X-01`…`X-05` range, no `X-*` wildcard — and the counting sc
 if it finds one, rather than counting the shorthand as the two IDs it mentions.
 
 ```
-current, regenerated 2026-08-27 from the artifacts
+current, regenerated 2026-08-27 from the v1.8 artifacts
 
-  table-case relations        406      196 cases
-  spike relations              58        7 cases
+  table-case relations        417      200 cases
+  spike relations              72        7 cases
                              ────
-  total                       464      203 cases; every case carries at least one
+  total                       489      207 cases; every case carries at least one
+
+  spike Verifies lines are derived from pass criteria, not authored (CR-49).
+  12 requirement mentions remain in spike bodies with no edge, each adjudicated
+  as cross-reference, consequence, or negative scoping — never left unruled.
 ```
 
 **Every earlier figure in this section is a dated historical snapshot and not a current measurement.** They
@@ -824,7 +834,7 @@ Compression rule §6.7. Its first run produced the nine rows of §4c.
 
 The equivalence claim was false as published. See §5b and §6.
 
-### CR-11 — FC family and version gating · **OPEN, deferred by decision 2026-08-26**
+### CR-11 — FC family and version gating · **CLOSED in v1.8**
 
 `FC-05` gates on a version floor only. Two consequences are unaddressed **by decision, not by oversight**:
 
@@ -835,8 +845,43 @@ The equivalence claim was false as published. See §5b and §6.
    assumes Betaflight or INAV mechanics, and an unknown variant's RC-validity and failsafe semantics have
    never been audited.
 
-Item 2 is the safety-relevant half and does not depend on any hypothetical future release. **This CR stays
-open and shall be resolved before implementation reaches `FC-05`.**
+Item 2 is the safety-relevant half and does not depend on any hypothetical future release. It stayed open
+by decision until v1.8, whose trigger this entry set itself: *"shall be resolved before implementation
+reaches `FC-05`."* Phase 2 of the implementation plan implements `FC-05`, so the deferral expired on its
+own terms rather than by anyone changing their mind.
+
+**Resolution — item 1, the ceiling.** `FC-05` now gates INAV on `major == 8` **and** `triple >= 8.0.1`;
+`FC-06` states that the INAV comparison is two-sided; `VAL-FUNC-02` runs an INAV 9.0.0 build against it.
+`SCOPE-02` gains the ordering that stops the hole reopening: **forward-compatibility validation →
+reviewed `SCOPE-01` delta → the release that supports it**. A build that passes validation is still
+unsupported until `SCOPE-01` is amended, so the document cannot say *"within 8.x"* while a validated
+INAV 9 is in service.
+
+**Resolution — item 2, the safety-relevant half.** `FC-09` no longer routes an unrecognised variant into
+telemetry-disabled compatibility. That state leaves camera control **active**, and the entire `RCV-*`
+model — guarded commit, `armingDisableFlags`, `ARMING_DISABLED_RC_LINK` — is built on Betaflight and INAV
+mechanics. An unaudited variant has no known RC-validity or failsafe semantics, so the bridge cannot tell a
+live `MSP_RC` value from a held or substituted one. **It was the one place this specification let an
+unaudited platform reach an actuator.** An unsupported variant now enters the named state
+`UNSUPPORTED_FC_VARIANT` with camera control suppressed.
+
+**`FC-08` becomes the canonical post-identification taxonomy**, four outcomes rather than *"the two
+degraded states"* — a phrase that was already wrong the moment a third suppressing state existed. The
+split is by **when the state is decided**: `FC-08`'s outcomes all follow a completed identification;
+failure to complete identification at all is `FC-15`.
+
+**`OSD-19` needed no edit, and that is worth recording.** `FC-09` was already a term of
+`osdBackendEnabled`, so the OSD half of the variant case was always right. Only the camera-control half
+was wrong — which is exactly why the defect survived: every audit that looked at unsupported variants
+looked at OSD writes, and the column that mattered was the other one.
+
+**The validation half is part of the closure, not a follow-up.** `VAL-FUNC-83` *asserted the behaviour
+this CR deletes* — *"unsupported FC variant enters telemetry-disabled compatibility"* — so closing the
+requirement without it would have left the case and the requirement contradicting each other. Amended:
+`VAL-FUNC-83` (camera control suppressed, proven by MSP capture over a full control range),
+`VAL-FUNC-119` (extended from OSD-only to camera control in both suppressing states), `VAL-FUNC-02`
+(the ceiling), and `VAL-SPIKE-01` item 21 (three degrade kinds, not two, with a new subcase **d** for
+the variant path and ordering re-lettered to **e**).
 
 ### CR-12 — official-DJI-path preference · **CLOSED: removed by decision 2026-08-26**
 
@@ -1756,6 +1801,423 @@ those two matchers.
 And `PF-BF-22`'s insertion had silently deleted a section heading in v1.5 (CR-48). **Three audits and a
 structural verifier ran over that document twice without noticing**, because every one of them reads the
 parts and none reads the skeleton.
+
+---
+
+### CR-49 — spike `Verifies:` lines were authored, not derived · **CLOSED in v1.8**
+
+Five requirements carried no relation under §4b's unit — `RF-04`, `SAFE-01`, `CAM-01`, `RES-06`,
+`RES-08` — while audit 4 reported *"requirements with no validation case: 0"*. Both were true at once:
+the figure was produced under the loose reading, where any mention counts, and v1.6's unit definition
+(CR-45) silently falsified it. **A unit definition that repairs one claim can falsify older claims, and
+nothing re-checked them.**
+
+**The five were a symptom.** Re-deriving every spike's line from its pass criteria found **22 body-only
+mentions across five spikes**. `VAL-SPIKE-01` had 38 declared and **zero** gaps; the other six were
+hand-authored in the same v1.6 delta, with no note that two methods were in use.
+
+**Five adjudication classes, ruled against the pass criteria and never against the mention:**
+
+| Class | Test | Action |
+| --- | --- | --- |
+| relation | a numbered pass criterion exercises it | add to `**Verifies:**` |
+| cross-reference | a pointer to a rule living elsewhere | leave in body, no edge |
+| consequence | failure *implicates* it without testing it | no edge; find the case that does |
+| negative scoping | named in order to be excluded | no edge; fix what the exclusion exposes |
+| **misattribution** | the cited requirement does not say what is claimed | **remove the citation** |
+
+**11 mentions became relations** — `RF-04` on spike 2; `OSD-02`, `RES-02`…`RES-05`, `RES-08`, `RES-09`,
+`REL-02` on spike 3; `RES-09`, `REL-02` on spike 4. `RF-04` is the sharpest: `REL-02` already named
+spike 2 as its closer, so the registry and §4b were asserting opposite things about the same pair.
+
+**Two were removed as misattributions**, which is a worse class than decorative and where removal is not
+optional. Spikes 6 and 7 both recorded a negative result *"per `CAM-08`"*. **`CAM-08` is the camera
+compatibility lifecycle** — `Unsupported → Expected → Verified` by named evidence — and states no general
+rule that negative experimental results are recorded. Spike 4 cites `CAM-08` correctly, about promotion,
+which is the contrast that proves the other two were borrowing authority the requirement does not carry.
+
+**Nine remained in the bodies with no edge at this adjudication, all deliberately** — a figure true when
+measured and superseded later in the same delta, see CR-55: `SAFE-01` and `CAM-01` (consequence),
+`RES-06` (negative scoping), `CTRL-12`, `PAIR-08`, `REL-01`, `RF-04`-on-spike-7, `SCOPE-03`, `SCOPE-05`
+(cross-reference). **`RF-04` is a relation on spike 2 and a cross-reference on spike 7** — the same ID,
+opposite rulings, because spike 2 determines the value and spike 7 merely tests *at* the far end of range.
+That pair is the argument for ruling per criterion rather than per identifier.
+
+**Three cases carry what the spikes never tested:**
+
+| Case | Verifies | Why the spike did not cover it |
+| --- | --- | --- |
+| `VAL-REV-14` | `SAFE-01` | Spike 2 measures RF degradation, which is `RF-05`'s; no clause of `SAFE-01` is exercised by an attenuator sweep |
+| `VAL-REV-15` | `CAM-01` | Spike 3 ports the driver *"behind the `CAM-01` interface"* but no pass criterion tests that isolation |
+| `VAL-FUNC-125` | `RES-06` | Spike 3 names `RES-06` **only to exclude it**; `Opt`/`Opt`, gating V1.2 and not V1 |
+
+`RES-06` needed a case rather than a scope note because §6's invariant — *"0 orphan requirements (every
+requirement has ≥ 1 validation case)"* — carries **no applicability exception**. `REL-01` has applicability
+semantics; the graph invariant does not, and it was not weakened to make an orphan disappear.
+
+### What this cost to find, and one defect it created
+
+**The headline count was wrong twice before it was right.** The first extractor bounded each spike by the
+*next spike heading*, so the final block ran to end-of-file and absorbed `## 4. Regression procedure` —
+which is where the `SAFE-02` briefly attributed to spike 7 actually lives. The corrected extractor bounds
+by the next heading of **any** level, and the count is 22, not 23. *A measured figure from a script whose
+bounds were never checked is the same defect as a hand-authored `Verifies:` line.*
+
+**And applying the fix introduced a third instance of the same class.** Spike 3's new line was written
+wrapped across two lines for readability. **Both `spikegap2.py` and `v16_edges.py` read exactly one line**,
+so three of the eleven new edges — `RES-08`, `RES-09`, `REL-02` — vanished silently and reappeared as
+body-only mentions on the next run. Nothing in the format states that a `Verifies:` line must not wrap,
+and nothing checked it. The extractor now **refuses to run** on a wrapped line rather than undercounting.
+
+**Result: 0 orphan requirements under the strict unit**, for the first time since the unit was defined.
+Spike edges 58 → 71, table edges 406 → 412, total 464 → 483 across 206 cases — every figure re-derived
+from disk, none carried forward.
+
+---
+
+### CR-52 — no MSP transaction deadline anywhere · **OPEN until the write-back**, raised in v1.8
+
+Three requirements turn on being able to declare an MSP request failed — `RCV-10` extends a qualification
+interval per *"unanswered or failed"* transaction, `MSP-06` requires tolerating *"a missing or late reply"*,
+`MSP-07` treats an incomplete bracket as a failed one — and **no requirement said when that happens.**
+`REL-02`'s own defect rule did not catch it: that rule covers a parameter *delegated* elsewhere, and this
+one was simply absent. Two conforming implementations at 20 ms and 500 ms would qualify at different times
+against the same FC.
+
+**`MSP-09` separates three things the first draft of this repair conflated.**
+
+| Concept | Disposition |
+| --- | --- |
+| Transaction deadline | **`OPEN`** in `REL-02`. Measurement: `VAL-SPIKE-01`. **Closure: a reviewed write-back recorded against this CR** |
+| Retry backoff | **1.0 s fixed, post-terminal** — a literal in `MSP-09`, not a registry row, because it is product cadence and not a physical unknown |
+| One outstanding transaction | an invariant, stated in `MSP-09` |
+
+**`VAL-SPIKE-01` is not the closer, and the distinction is the point.** A spike that selects the value it
+measured is the delegated-vagueness defect `REL-02` exists to prevent — *"measured worst case + margin"* is
+not a rule, because the margin is unnamed. Three roles stay apart: **the spike measures, a reviewed decision
+closes, and a re-run verifies.** This CR therefore stays open until the write-back, exactly as CR-24 and
+CR-44 stayed open for facts that did not exist yet.
+
+**The invariant was not written down anywhere, which nobody noticed until it was needed.**
+
+> **Attribution note.** Successive reviews, and this ledger's own drafts, repeatedly attributed the
+> one-outstanding-transaction invariant to `MSP-01` — *"the invariant stays in `MSP-01`"*. A search of the
+> full artifact set for `outstanding`, `one request`, `single request`, `in flight at a time` and `pipelin`
+> returned **no such requirement, in any document**. `MSP-01` is a poll-rate table and says nothing about
+> concurrency. **`MSP-09` therefore introduces the invariant normatively rather than cross-referencing
+> `MSP-01`.**
+
+This note exists because without it the historical argument is unreadable: several rounds of review turn on
+*preserving* a rule that was never written, and a later reader would look for the `MSP-01` clause being
+preserved and not find it. The rule was assumed by `MSP-01`'s rates, by `MSP-07`'s bracket and by every
+retry in the document, and stated by none of them.
+
+**This is a different failure from the tooling defects around it.** Those were measurements taken with
+unchecked instruments. This was a *requirement credited with content it never had* — an attribution that
+survived because everyone citing it was citing each other.
+
+**Post-terminal retry, and what it replaced.** An earlier draft specified a *periodic* 1.0 s identification
+retry, which contradicts the invariant whenever the deadline exceeds 1.0 s — and the deadline is `OPEN`, so
+it cannot be assumed shorter. Waiting 1.0 s **after a transaction terminates** decouples the cadence from
+whatever value the measurement eventually produces. `MSP-06` requires only that failed requests back off and
+never retry-storm; it does not require exponential backoff, so a bounded flat interval satisfies it.
+
+**No §3 row yet.** An earlier draft called the deadline a *derivation* and claimed audit 3's pass 3 must
+pick it up. It is not one: the supporting argument — that the deadline must be strictly less than the poll
+period or the one-outstanding invariant breaks — was **wrong**. A longer deadline makes polls *slip*,
+degrading the achieved rate, which `MSP-08` already governs. **A wrong reason for a plausible rule is the
+CR-42 defect**, and it survived two review rounds before being caught. §3 gains a row when a value is
+written back, and not before.
+
+### CR-53 — an FC that never answers, and no local indicator · **CLOSED in v1.8**
+
+`FC-05` covers supported-but-old; `FC-14` covers a restart; `FAIL-01`'s 25 entries covered neither this nor
+anything like it; and **the document contained no indicator requirement at all.** So the most likely
+installation error — MSP not enabled on the chosen UART, `INST-01` step 2 — produced a bridge inert forever
+with no way to say so, because `OSD-19` cannot reach an OSD backend that was never probed.
+
+**`FC-15` is defined by failure to *complete*, not by silence — and its own validation case is what proved
+the first framing wrong.** Drafted as `FC_NOT_RESPONDING` entered after a no-response interval, it fails on
+the partial case: `MSP_API_VERSION` answers, `MSP_FC_VARIANT` never does, the FC **is** responding, the
+timer never expires, and identification never finishes. The name was false in exactly that case, and the
+*"partial identification response"* test would have imposed behaviour the requirement did not entail —
+the audit-6 defect, arriving inside the repair for a different one. **Entry is now: no complete identity
+within 2.0 s of the first request, with individual replies not resetting the clock.**
+
+Recovery is automatic and needs no reboot: retry under `MSP-09`'s post-terminal rule, exit only into one of
+`FC-08`'s outcomes, and **camera control stays suppressed until the whole qualification chain succeeds**.
+
+**`FAIL-01`'s 26th entry names an observable, not a cause.** *"FC MSP identification unavailable or
+incomplete"* — because `FC-15` cannot see whether MSP is disabled, on the wrong UART, at the wrong baud,
+miswired, still booting, or partially implemented. All present identically. `INST-01` step 2 carries the
+diagnosis; the failure list carries what is observed. And the entry arrives with `VAL-FAIL-60`, because
+`FAIL-01` states that each listed failure *"has a corresponding acceptance test in `VAL-FAIL-*`"* and
+`VAL-REV-11` rolls that up — a bare row would have falsified the clause it was added to.
+
+**`IND-01` is keyed on an asserted diagnostic, not on total system state.** A two-row table of *"ordinary
+operation"* versus `FC_NOT_IDENTIFIED` is **not closed**: there is a window of up to 2.0 s where
+identification is in progress and the state has not been entered, and `PAIR` never runs identification at
+all. Both would have fallen through, and audit 3's pass 2 would have regenerated a "closure" that was not
+one. Keyed on assertion, both are simply solid and no third code is needed. The indicator is **on-board and
+adds no installation wiring**, or reporting a fault would change `INST-01`'s four-solder-joint contract.
+
+### What applying these two cost
+
+**A new requirement family broke the definition set the same day it was unified.** `IND` was absent from
+`defs.py`'s family list, so `verify.py` counted 249 while `orphan.py` counted 250 — the exact divergence
+unification had just closed. It was visible within one run **because** the tools now share an authority;
+before v1.8 it would have been two numbers in two reports that nobody diffed. **Adding a requirement family
+is a change to the node set, not to the document alone.**
+
+**And one report of that unification was wrong when it was made.** `orphan.py` was described as pointed at
+the shared extractor when the edit applying it had aborted; the two tools agreeing at 247 was a coincidence
+of two different regexes, not shared code. **Agreement between independent implementations is not evidence
+that they share a definition** — which is the whole argument for `defs.py`, arrived at the hard way.
+
+---
+
+### CR-54 — two requirements depended on undefined or improperly normative internal concepts · **CLOSED in v1.8**
+
+One defect class, **opposite repairs**. Each requirement leaned on an internal concept that no requirement
+supplied: `LEARN-18` on a session lifetime nothing defined, `OSD-18` on a task model nothing defines. One is
+fixed by **adding the missing semantics**, the other by **subtracting leaked architecture** — and telling
+them apart is the whole content of this CR.
+
+**`LEARN-18` — add.** It requires abandonment when *"the client disconnects, the page is closed, or the user
+cancels"*, and says plainly that *"a closed browser leaves nobody to send a cancel"*. Nothing said how the
+bridge knows. **`LEARN-19`** now supplies it: a client-held lease refreshed at **≤ 1.0 s**, abandoned after
+**3.0 s** without a valid refresh, with transport unspecified — WebSocket, SSE or heartbeat all satisfy it.
+
+*Why a lease and not a connection.* **No network-layer fact reports a closed page.** A phone stays
+associated to the access point; a socket may outlive the tab. Only something the client must keep *doing*
+distinguishes a live page from a closed one. An earlier draft of this repair proposed Wi-Fi station
+association as the session signal — that was **wrong**, and the ELRS precedent cited for it was wrong too:
+`esp_wifi_ap_get_sta_list()` appears once in 4.1.0, inside `wifi_GetClientRssi()`, reading **RSSI**.
+
+**`OSD-18` — subtract.** It read *"the MSP task **shall** be able to interleave an OSD write between control
+polls"* — a scheduling mechanism made normative, leaving the requirement dependent on a task model no
+requirement defines. **The clause is demoted to non-normative rationale.** The obligation is the observable
+one, changed content submitted within **100 ms**, and `VAL-FUNC-115` already measures exactly that at
+`MSP-01`'s worst-case load. The dangling dependency closes with **nothing added**.
+
+*Both earlier positions on this were wrong.* One review round asserted `OSD-18` did **not** require an
+interleave; it did, in those words. The repair drafted in response would have added a cooperative-scheduling
+obligation — importing more architecture to support architecture that should not have been there.
+**Subtraction was available the whole time and neither side proposed it.**
+
+### Delta-impact reread, and the control totals
+
+Both endpoints changed normatively, so their surviving edges were re-read rather than assumed (CR-38):
+
+| Edge | Verdict after re-reading |
+| --- | --- |
+| `VAL-FAIL-55` → `LEARN-18` | **holds, and is stronger.** Now runs four ways including explicit cancel — previously untested, though `LEARN-18` names it — and **measures both `LEARN-19` bounds** rather than only the abandonment outcomes |
+| `VAL-FUNC-115` → `OSD-18` | **holds unchanged.** Only rationale was demoted; the 100 ms obligation the case measures is untouched |
+
+`MSP-07` lost one PRS cross-reference with the demoted sentence and retains its others, so no edge moved.
+
+**Movement against the pre-CR-54 control totals, all of it predicted:**
+
+```
+requirements   250 → 251     LEARN-19
+cases          207 → 207     VAL-FAIL-55 extended, not added
+relations      488 → 489     VAL-FAIL-55 → LEARN-19
+strict orphans   0 →   0
+dangling refs    0 →   0
+vague terms      0 →   0
+```
+
+---
+
+### CR-50 — a correct citation was overwritten from an unverified source · **CLOSED in v1.8**
+
+Raised as *"the current Evidence silently departs from the v1.0 source it was compressed from"* — three
+`MSP_RC` locations differed between `action-camera-bridge-prs-source-v1.0.md` and `PF-BF-23`, and a full
+sweep of every `path:line` citation confirmed those three were **the only ones in the set that moved**.
+
+**The direction of the defect is the reverse of the one raised.** Resolved from shallow checkouts at
+`2025.12.5` and `8.0.1`, read out of the git object store:
+
+| Location | v1.0 source | `PF-BF-23` as written | web fetch | **checkout** |
+| --- | --- | --- | --- | --- |
+| BF `msp_protocol.h` `MSP_RC` | `:176` ✅ | `:163` ❌ | `:155` ❌ | **`:176`** |
+| BF `msp.c` `case MSP_RC:` | `:1317-1321` ✅ | `:1209-1213` ❌ | `:2545` ❌ | **`:1317-1321`** |
+| INAV `fc_msp.c` `case MSP_RC:` | `:621-625` ✅ | `:588-592` ❌ | `:1102` ❌ | **`:621-625`** |
+| INAV `msp_protocol.h` `MSP_RC` | not cited | `:215` ❌ | `:209` ❌ | **`:238`** |
+
+**The v1.0 source was right on all three it carried. `PF-BF-23` was wrong on all four.** The `.c` ranges are
+exact: `1317-1321` and `621-625` are the five-line blocks through `break;`. v1.7 did not correct a stale
+citation — **it overwrote three correct ones and added a fourth**, from numbers supplied in review and
+recorded while stating openly that they could not be verified.
+
+**Four confident readings, one checkout, and only the checkout was right.** The v1.0 source, `PF-BF-23`,
+a review that reported having *"checked the pinned raw sources directly"*, and a web fetch of the raw files
+at the pinned tags — the last two wrong on all four locations. A markdown-rendered fetch with a model
+counting lines is not a line-number oracle, and it is not one merely because it is your own.
+
+**Nothing in the conclusion changes.** Both loop bodies were confirmed verbatim at the corrected lines:
+`rcData[i]` over `rxRuntimeState.channelCount`, `rxGetChannelValue(i)` over `rxRuntimeConfig.channelCount`,
+both `sbufWriteU16`, **no count field in either payload**. `CTRL-13`'s derivation stands. Only the line
+numbers were wrong — which is exactly the failure mode Evidence's standing rule already predicted:
+*"the part most likely to be regenerated from memory rather than read."*
+
+**This CR carries three consequences, and the third is the one most easily lost.**
+
+**1 · Immediate repair.** `PF-BF-23`'s four coordinates are corrected to the checkout-derived values, with a
+version note recording what they were, what they are, and that v1.0's were right.
+
+**2 · Prospective rule.** From v1.8 onward every new or changed citation is generated from a pinned checkout
+with a line-numbering tool, **and the invocation is recorded**. Evidence's standing rule already required
+*"opening the file at the pinned tag"* and already forbade *"silently re-pointing a citation"* —
+**`PF-BF-23` broke both.** The rule was not missing; its **checkable half** was, so compliance was asserted
+rather than verifiable.
+
+**3 · The existing corpus is now known to be at risk, and its pre-release re-verification is load-bearing.**
+This incident demonstrated that **hand-supplied wrong coordinates survive multiple deltas and multiple
+reviews** — `PF-BF-23` passed three audits, a structural verifier and three review rounds with all four
+numbers wrong. **Prospective hygiene does not close that.** It governs citations written from v1.8 onward
+and says nothing about the 38 platform facts already recorded, every one of which was produced by a process
+that was never named. Four `grep -n` runs settle one fact and establish nothing about the others.
+
+So the pre-release re-verification of current Evidence citations is **not ceremonial and shall not be
+treated as a formality**: it is the only control that covers the existing corpus, and this CR is the
+demonstration that it is needed. Whether that sweep runs now or as the release step is a scheduling
+decision; **treating it as already satisfied is not.**
+
+### CR-51 — CR-39 was never allocated · **CLOSED in v1.8**
+
+The change-record sequence runs 38 → 40. `CR-39` appears in no artifact and is referenced nowhere; a number
+was skipped while CR-38 and CR-40 were written in the same pass.
+
+**Recorded as never allocated; the gap is intentionally preserved after discovery.** The skip was
+accidental — what is deliberate is the refusal to renumber. Every existing `CR-4x` reference would move, and
+historical blocks are never edited in place.
+
+`verify.py` gains a **change-record sequence check**. v1.7 added a *section*-numbering check to that same
+verifier in response to CR-48, and a CR-numbering check is one door along from it; that door was not opened
+until the gap was found by reading rather than by tooling.
+
+---
+
+### CR-55a — the delta introduced three body-only mentions while adjudicating body-only mentions
+
+`spikegap2.py` moved from **9 to 12** between CR-49 and the end of v1.8, with no spike edited after CR-49.
+The three are all on `VAL-SPIKE-01`, and all three were written by **CR-52's own new pass criterion**:
+
+| Mention | In the criterion as | Ruling |
+| --- | --- | --- |
+| `SAFE-03` | *"every command in `SAFE-03`"* | **cross-reference** — the allowlist enumerates *what to measure*; the spike does not test the allowlist |
+| `MSP-01` | *"at `MSP-01`'s worst supported load"* | **cross-reference** — a test condition, the same shape as `RF-04` on spike 7 |
+| `REL-02` | *"the delegated-vagueness defect `REL-02` exists to prevent"* | **cross-reference** — rationale for the criterion's design, not a thing it exercises |
+
+**No edges. The adjudicated total is 12, and `VAL-SPIKE-01`'s declared count stays at 41.**
+
+**This is the fourth instance in one delta of the class CR-49 exists to fix**, after a hand-authored
+`Verifies:` line, a script with unchecked bounds, and a wrapped declaration. The pattern is now clear and
+worth naming: **prose that cites a requirement is written far more readily than a declaration that
+constitutes a relation**, so any delta that adds spike prose adds candidate mentions — including a delta
+whose subject is that exact problem. `spikegap2.py` is therefore a **standing** check rather than a
+one-off repair, and its number is re-derived at the end of every delta, not only when spikes are edited.
+
+**It also caught itself the right way round.** The movement was noticed because the pre-regeneration counts
+were compared against recorded control totals rather than accepted as the new truth — 9 → 12 had no
+semantic explanation until one was found, and the rule that produced it was *investigate unexplained
+movement, do not adopt it*.
+
+---
+
+### CR-55 — audit 7 re-run whole over v1.8 · **two findings, both closed**
+
+Audit 7 was re-run across the whole PRS rather than over the changed cluster, because v1.8 altered the FC
+state model (CR-11), added timing and failure semantics (CR-52), added a state and an indicator (CR-53) and
+a session lease (CR-54). Both findings sit at seams v1.8 created.
+
+**Finding A — `OSD-19`'s terms were not stated as requiring positive establishment, and `FC-15` now depends
+on that reading.** `OSD-19` computes `osdBackendEnabled` from three terms and calls them **exhaustive**.
+`FC-15` then forbids OSD writes in `FC_NOT_IDENTIFIED`, a state in which **none of the three has been
+determined at all** — the variant is unknown, the floor untested, the capability unprobed.
+
+Both requirements are satisfiable together, but **only under an unstated reading**: that an unestablished
+term is false. Under the opposite reading — each term true unless disproved — the backend would be enabled
+before the FC is known, and `OSD-09`'s owned-slot initialisation, which `VAL-FUNC-119` calls *"otherwise
+unconditional"*, would fire against an unidentified FC. **Two requirements agreeing only by interpretation is
+what audit 7 exists to remove.** `OSD-19` now states it in one sentence; no fourth term is needed, and
+`OSD-09`'s *"as soon as the FC backend is up"* is the gate that makes the two agree.
+
+**Finding B — `LEARN-04`'s sample arithmetic reads as unconditional and is not.** *"250 ms at 20 Hz →
+5 samples"* is a guarantee derived from the poll rate alone, written when a poll was assumed to return.
+**`MSP-09` makes a timed-out transaction a first-class outcome**, and a timed-out poll yields **no sample** —
+`MSP-07` forbids synthesizing one and discards an incomplete bracket.
+
+This matters more than it would elsewhere because the same requirement records that **`CTRL-19`'s 250 ms and
+`LEARN-06`'s five samples meet with no margin at all.** At zero margin, **one lost transaction leaves the
+window a sample short.** The behaviour is safe — `LEARN-06` declines to characterise rather than proposing a
+range from four, which is the correct direction of failure — but the condition was unstated, and a computing
+sentence with an unstated condition is a measurement with an unstated method (CR-42). The condition is now
+written down.
+
+**Neither finding changed the graph:** 251 requirements, 207 cases, 489 relations before and after. Both were
+clarifications of existing text, which is what a clean audit-7 finding usually looks like — the defect is in
+what two requirements *jointly imply*, not in either one read alone.
+
+**One observation about the pairing.** Both findings are the same shape as CR-54's: a requirement leaning on
+something no requirement supplies. CR-54's were *dangling internal dependencies*, visible because a term had
+no definition anywhere. These two were invisible by comparison, because the missing piece was not a term but
+a **reading** — `OSD-19`'s terms had a definition, just not a polarity, and `LEARN-04`'s arithmetic had a
+method, just not a precondition. **A cross-reference audit finds the first kind; only reading requirements
+against each other finds the second.**
+
+---
+
+## 5i. v1.8 delta — applied 2026-08-27
+
+**What triggered it.** Four findings and two gaps raised against v1.7, then four further review rounds
+against the repairs themselves. Every round found something; several found defects of the exact class the
+document under review had just diagnosed.
+
+| # | Change | Kind | CR |
+| --- | --- | --- | --- |
+| 1 | `FC-09` — an unsupported variant enters `UNSUPPORTED_FC_VARIANT` with **camera control suppressed** | specification | CR-11 |
+| 2 | `FC-08` — four post-identification outcomes replace *"the two degraded states"* | specification | CR-11 |
+| 3 | `FC-05`/`FC-06` — INAV gated on `major == 8` **and** `>= 8.0.1`; `SCOPE-02` ordering rule | specification | CR-11 |
+| 4 | `VAL-FUNC-83`, `VAL-FUNC-119`, `VAL-FUNC-02`, `VAL-SPIKE-01` item 21 revised | validation | CR-11 |
+| 5 | All 7 spike `Verifies:` lines re-derived from pass criteria; 22 mentions adjudicated | validation | CR-49 |
+| 6 | Two `CAM-08` **misattributions** removed — the requirement does not state the rule cited | validation | CR-49 |
+| 7 | `VAL-REV-14` (`SAFE-01`), `VAL-REV-15` (`CAM-01`), `VAL-FUNC-125` (`RES-06`) added | validation | CR-49 |
+| 8 | `SCOPE-01` normalised to canonical form; `defs.py` becomes the single definition authority | tooling | CR-49 |
+| 9 | `PF-BF-23` — all four line numbers corrected from pinned checkouts; version note added | evidence | CR-50 |
+| 10 | Evidence standing rule — how a citation is produced, with the invocation recorded | evidence | CR-50 |
+| 11 | CR-39 recorded as never allocated; `verify.py` gains a change-record sequence check | ledger | CR-51 |
+| 12 | `MSP-09` — transaction deadline `OPEN`, post-terminal 1.0 s backoff, one-outstanding invariant | specification | CR-52 |
+| 13 | `REL-02` — deadline row, with **measurement and closure named separately** | specification | CR-52 |
+| 14 | `FC-15` — `FC_NOT_IDENTIFIED`, entered on failure to *complete* within 2.0 s | specification | CR-53 |
+| 15 | `IND-01` — on-board indicator, mapping keyed on asserted diagnostic | specification | CR-53 |
+| 16 | `FAIL-01` 26th entry, stated as an observable; `VAL-FAIL-60` added | validation | CR-53 |
+| 17 | `LEARN-19` — 3.0 s client-held lease, refresh <= 1.0 s; `VAL-FAIL-55` extended to four ways | specification | CR-54 |
+| 18 | `OSD-18` — the *"MSP task shall interleave"* clause demoted to non-normative rationale | specification | CR-54 |
+| 19 | `OSD-19` — each term false until positively established; `LEARN-04` arithmetic given its precondition | specification | CR-55 |
+| 20 | Compression rule §6.11 — a unit definition falsifies figures measured under the old unit | method | CR-49 |
+
+**251 requirements, 207 validation cases, 39 platform facts, 489 relations.** Four requirements added, four
+cases added, no requirement or case removed.
+
+### What this delta cost to get right
+
+**Every review round found a defect of the class the document under review had just diagnosed.** Round 2
+found two decorative edges inside the repair for decorative edges. Round 3 found that CR-49's own reading
+instruction contradicted CR-38. Rounds 4 and 5 found unresolved meta-options — *"a literal or a `REL-02`
+row"* — in a document claiming to have none. Round 6 found the replacement claim was false too.
+
+**Four separate instances of CR-49's own defect appeared while fixing it:** a hand-authored `Verifies:`
+line, an extractor with unchecked block bounds, a wrapped declaration that silently dropped three edges, and
+three new body-only mentions written by CR-52's pass criterion (CR-55a). The tooling now fails closed on the
+second and third; the fourth is why `spikegap2.py` is a standing check.
+
+**Three defects were found by neither the reviews nor the tooling, but by trying to apply the result:**
+`PF-BF-23`'s four wrong citations (CR-50), the one-outstanding invariant that `MSP-01` never contained
+(CR-52), and `OSD-19`'s terms having no stated polarity (CR-55). **Application is an audit**, and it is the
+only one that runs against what the document actually says rather than against what everyone remembers it
+saying.
 
 ---
 
