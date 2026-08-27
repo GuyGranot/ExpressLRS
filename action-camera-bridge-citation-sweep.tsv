@@ -1,0 +1,143 @@
+fact_id	platform	commit	path	recorded_start	recorded_end	coordinate_status	file_lines	content_match	disposition	extract
+PF-BF-02	BF	7348054f268f	msp/msp_protocol.h	269	270	in-bounds	279 lines	?	unchanged	#define MSP_SET_RTC                     246  // in message:  Set the RTC clock / #define MSP_RTC                         247  // out message: Get the 
+PF-BF-02	INAV	ae47bcba0182	msp/msp_protocol.h	301	302	in-bounds	308 lines	?	unchanged	#define MSP_RTC                  246    //out message         Gets the RTC clock (returns: secs(i32) millis(u16) - (0,0) if time is not known) / #defi
+PF-BF-02	BF	7348054f268f	msp/msp.c	2179	2179	in-bounds	4481 lines	?	unchanged	case MSP_RTC: {
+PF-BF-02	INAV	ae47bcba0182	fc/fc_msp.c	1459	1459	in-bounds	4397 lines	?	unchanged	case MSP_RTC:
+PF-BF-03	BF	7348054f268f	msp/msp.c	4052	4052	in-bounds	4481 lines	?	unchanged	case MSP2_SET_TEXT:
+PF-BF-04	BF	7348054f268f	msp/msp.c	642	647	in-bounds	4481 lines	?	unchanged	case MSP_FC_VERSION: / sbufWriteU8(dst, (uint8_t)(FC_VERSION_YEAR - FC_CALVER_BASE_YEAR)); // year since 2000 / sbufWriteU8(dst, FC_VERSION_MONTH);
+PF-BF-04	BF	7348054f268f	build/version.h	28	35	in-bounds	79 lines	?	unchanged	#define FC_CALVER_BASE_YEAR 2000 /  / // The year the release is made
+PF-BF-04	INAV	ae47bcba0182	fc/fc_msp.c	369	373	in-bounds	4397 lines	?	unchanged	case MSP_FC_VERSION: / sbufWriteU8(dst, FC_VERSION_MAJOR); / sbufWriteU8(dst, FC_VERSION_MINOR);
+PF-BF-04	BF	7348054f268f	build/version.h	28	28	in-bounds	79 lines	?	unchanged	#define FC_CALVER_BASE_YEAR 2000
+PF-BF-04	BF	7348054f268f	msp/msp.c	646	646	in-bounds	4481 lines	?	unchanged	sbufWritePString(dst, FC_VERSION_STRING);
+PF-BF-05	BF	7348054f268f	msp/msp.c	4080	4090	in-bounds	4481 lines	?	unchanged	case MSP2TEXT_CUSTOM_MSG_0: / case MSP2TEXT_CUSTOM_MSG_0 + 1: / case MSP2TEXT_CUSTOM_MSG_0 + 2:
+PF-BF-05	BF	7348054f268f	msp/msp.c	4101	4104	in-bounds	4481 lines	?	unchanged	#ifdef USE_OSD / if (textType == MSP2TEXT_PILOT_NAME || textType == MSP2TEXT_CRAFT_NAME) { / osdAnalyzeActiveElements();
+PF-BF-06	BF	7348054f268f	rx/rx.c	128	128	in-bounds	1032 lines	?	unchanged	float rcData[MAX_SUPPORTED_RC_CHANNEL_COUNT];           // scaled, modified, checked and constrained values
+PF-BF-07	BF	7348054f268f	fc/rc_modes.h	101	101	in-bounds	156 lines	?	unchanged	#define MODE_STEP_TO_CHANNEL_VALUE(step) (CHANNEL_RANGE_MIN + 25 * step)
+PF-BF-08	BF	7348054f268f	msp/msp_protocol.h	263	263	in-bounds	279 lines	?	unchanged	#define MSP_MODE_RANGES_EXTRA           238  // out message: Extra mode range data
+PF-BF-08	BF	7348054f268f	msp/msp_protocol.h	106	106	in-bounds	279 lines	?	unchanged	#define MSP_MODE_RANGES                 34   // out message: Returns all mode ranges
+PF-BF-08	INAV	ae47bcba0182	msp/msp_protocol.h	127	127	in-bounds	308 lines	?	unchanged	#define MSP_MODE_RANGES                 34    //out message         Returns all mode ranges
+PF-BF-09	BF	7348054f268f	msp/msp.c	1128	1128	in-bounds	4481 lines	?	unchanged	sbufWriteU32(dst, armingDisableFlags);
+PF-BF-09	BF	7348054f268f	msp/msp.c	1094	1095	in-bounds	4481 lines	?	unchanged	case MSP_STATUS_EX: / case MSP_STATUS: {
+PF-BF-09	BF	7348054f268f	flight/failsafe.c	196	209	in-bounds	438 lines	?	unchanged	void failsafeOnValidDataFailed(void) / // run from rc.c when packets are lost for more than RXLOSS_TRIGGER_INTERVAL, or immediately BOXFAILSAFE switch
+PF-BF-09	BF	7348054f268f	flight/failsafe.c	202	202	in-bounds	438 lines	?	unchanged	setArmingDisabled(ARMING_DISABLED_RX_FAILSAFE);
+PF-BF-09	BF	7348054f268f	fc/runtime_config.c	73	76	in-bounds	151 lines	?	unchanged	void setArmingDisabled(armingDisableFlags_e flag) / { / armingDisableFlags = armingDisableFlags | flag;
+PF-BF-10	BF	7348054f268f	rx/rx.c	619	619	in-bounds	1032 lines	?	unchanged	static uint16_t getRxfailValue(uint8_t channel)
+PF-BF-10	BF	7348054f268f	rx/rx.c	724	724	in-bounds	1032 lines	?	unchanged	sample = getRxfailValue(channel);
+PF-BF-10	BF	7348054f268f	rx/rx.c	730	730	in-bounds	1032 lines	?	unchanged	sample = getRxfailValue(channel);
+PF-BF-10	BF	7348054f268f	rx/rx.c	744	744	in-bounds	1032 lines	?	unchanged	sample = getRxfailValue(channel);
+PF-BF-10	BF	7348054f268f	rx/rx.c	762	762	in-bounds	1032 lines	?	unchanged	rcData[channel] = sample;
+PF-BF-10	BF	7348054f268f	rx/rx.c	158	158	in-bounds	1032 lines	?	unchanged	rxFailsafeChannelConfigs[i].mode = (i < NON_AUX_CHANNEL_COUNT) ? RX_FAILSAFE_MODE_AUTO : RX_FAILSAFE_MODE_HOLD;
+PF-BF-10	BF	7348054f268f	rx/rx.c	762	762	in-bounds	1032 lines	?	unchanged	rcData[channel] = sample;
+PF-BF-11	BF	7348054f268f	flight/failsafe.c	186	192	in-bounds	438 lines	?	unchanged	if (cmp32(failsafeState.validRxDataReceivedAt, failsafeState.validRxDataFailedAt) > (int32_t)failsafeState.receivingRxDataPeriodPreset) { / // receivi
+PF-BF-11	BF	7348054f268f	flight/failsafe.c	66	70	in-bounds	438 lines	?	unchanged	#ifdef USE_RACE_PRO / #define DEFAULT_FAILSAFE_RECOVERY_DELAY 1            // 100ms of valid rx data needed to allow recovery from failsafe and arming
+PF-BF-12	BF	7348054f268f	flight/failsafe.c	339	339	in-bounds	438 lines	?	unchanged	failsafeState.receivingRxDataPeriodPreset = 0;
+PF-BF-13	BF	7348054f268f	flight/failsafe.c	94	115	in-bounds	438 lines	?	unchanged	void failsafeReset(void) / { / failsafeState.rxDataFailurePeriod = failsafeConfig()->failsafe_delay * MILLIS_PER_TENTH_SECOND;
+PF-BF-13	BF	7348054f268f	flight/failsafe.c	176	183	in-bounds	438 lines	?	unchanged	if (failsafeState.validRxDataFailedAt == 0) { / // after initialisation, we sometimes only receive valid packets, so validRxDataFailedAt will remain u
+PF-BF-13	BF	7348054f268f	flight/failsafe.c	202	202	in-bounds	438 lines	?	unchanged	setArmingDisabled(ARMING_DISABLED_RX_FAILSAFE);
+PF-BF-13	BF	7348054f268f	flight/failsafe.c	212	221	in-bounds	438 lines	?	unchanged	void failsafeCheckDataFailurePeriod(void) / // runs directly from scheduler, every 10ms, to validate the link / {
+PF-BF-13	BF	7348054f268f	flight/failsafe.c	219	219	in-bounds	438 lines	?	unchanged	setArmingDisabled(ARMING_DISABLED_RX_FAILSAFE);
+PF-BF-13	BF	7348054f268f	flight/failsafe.c	231	231	in-bounds	438 lines	?	unchanged	if (!failsafeIsMonitoring()) {
+PF-BF-13	BF	7348054f268f	scheduler/scheduler.c	569	571	in-bounds	846 lines	?	unchanged	if (cmp32(millis(), lastFailsafeCheckMs) > PERIOD_RXDATA_FAILURE) { / // This is very low cost taking less that 4us every 10ms / failsafeCheckDataFail
+PF-BF-13	BF	7348054f268f	flight/failsafe.c	75	75	in-bounds	438 lines	?	unchanged	.failsafe_delay = 15,                                // 1.5 sec stage 1 period, can regain control on signal recovery, at idle in drop mode
+PF-BF-13	BF	7348054f268f	rx/rx.c	308	308	in-bounds	1032 lines	?	unchanged	rcData[i] = rxConfig()->midrc;
+PF-BF-13	BF	7348054f268f	rx/rx.c	314	314	in-bounds	1032 lines	?	unchanged	// Initialize ARM switch to OFF position when arming via switch is defined
+PF-BF-13	BF	7348054f268f	rx/rx.c	180	183	in-bounds	1032 lines	?	unchanged	return PPM_RCVR_TIMEOUT; / } / 
+PF-BF-13	BF	7348054f268f	rx/rx.c	219	219	in-bounds	1032 lines	?	unchanged	#endif
+PF-BF-14	BF	7348054f268f	flight/failsafe.c	106	106	in-bounds	438 lines	?	unchanged	failsafeState.validRxDataReceivedAt = 0;
+PF-BF-14	BF	7348054f268f	flight/failsafe.c	215	215	in-bounds	438 lines	?	unchanged	if (cmp32(millis(), failsafeState.validRxDataReceivedAt) > (int32_t)failsafeState.rxDataFailurePeriod) {
+PF-BF-14	BF	7348054f268f	flight/failsafe.c	212	221	in-bounds	438 lines	?	unchanged	void failsafeCheckDataFailurePeriod(void) / // runs directly from scheduler, every 10ms, to validate the link / {
+PF-BF-15	BF	7348054f268f	msp/msp.c	1657	1657	in-bounds	4481 lines	?	unchanged	case MSP_FAILSAFE_CONFIG:
+PF-BF-15	BF	7348054f268f	flight/failsafe.c	96	100	in-bounds	438 lines	?	unchanged	failsafeState.rxDataFailurePeriod = failsafeConfig()->failsafe_delay * MILLIS_PER_TENTH_SECOND; / if (failsafeState.rxDataFailurePeriod < PERIOD_RXDAT
+PF-BF-16	BF	7348054f268f	msp/msp_protocol_v2_betaflight.h	28	28	in-bounds	46 lines	?	unchanged	#define MSP2_SET_TEXT                       0x3007
+PF-BF-16	BF	7348054f268f	msp/msp_protocol_v2_betaflight.h	43	43	in-bounds	46 lines	?	unchanged	#define MSP2TEXT_CUSTOM_MSG_0                    7  // CUSTOM_MSG_MAX_NUM  entries are allocated
+PF-BF-16	BF	7348054f268f	pg/pilot.h	27	27	in-bounds	36 lines	?	unchanged	#define OSD_CUSTOM_MSG_COUNT 4
+PF-BF-16	BF	7348054f268f	msp/msp.c	2647	2647	in-bounds	4481 lines	?	unchanged	static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, sbuf_t *src)
+PF-BF-16	BF	7348054f268f	msp/msp.c	4052	4052	in-bounds	4481 lines	?	unchanged	case MSP2_SET_TEXT:
+PF-BF-17	BF	7348054f268f	pg/pilot.h	29	35	in-bounds	36 lines	?	unchanged	typedef struct pilotConfig_s { / char craftName[MAX_NAME_LENGTH + 1]; / char pilotName[MAX_NAME_LENGTH + 1];
+PF-BF-18	BF	7348054f268f	cli/cli.c	1629	1629	in-bounds	6956 lines	?	unchanged	cliPrintLinef("Forwarding, power cycle %sto exit.", resetMessage);
+PF-BF-18	BF	7348054f268f	cli/cli.c	1671	1671	in-bounds	6956 lines	?	unchanged	serialPassthrough(ports[0].port, ports[1].port, NULL, NULL);
+PF-BF-18	BF	7348054f268f	cli/cli.c	1510	1510	in-bounds	6956 lines	?	unchanged	case 3: // DTR action
+PF-BF-18	BF	7348054f268f	cli/cli.c	1625	1625	in-bounds	6956 lines	?	unchanged	if (port1ResetOnDtr && ports[1].id == SERIAL_PORT_USB_VCP) {
+PF-BF-18	BF	7348054f268f	cli/cli.c	1633	1633	in-bounds	6956 lines	?	unchanged	if (port1ResetOnDtr) {
+PF-BF-18	BF	7348054f268f	cli/cli.c	1398	1398	in-bounds	6956 lines	?	unchanged	static void cbCtrlLine_reset(void *context, uint16_t ctrl)
+PF-BF-18	BF	7348054f268f	cli/cli.c	6681	6681	in-bounds	6956 lines	?	unchanged	CLI_COMMAND_DEF("serialpassthrough", "passthrough serial data data from port 1 to VCP / port 2", "<id1> [<baud1>] [<mode1>] [none|<dtr pinio>|reset] [
+PF-BF-18	BF	7348054f268f	cli/cli.c	6683	6683	in-bounds	6956 lines	?	unchanged	CLI_COMMAND_DEF("serialpassthrough", "passthrough serial data from port 1 to VCP / port 2", "<id1> [<baud1>] [<mode1>] [none|reset] [<id2>] [<baud2>] 
+PF-BF-19	BF	7348054f268f	io/serial.c	692	692	in-bounds	734 lines	?	unchanged	void serialPassthrough(serialPort_t *left, serialPort_t *right, serialConsumer *leftC, serialConsumer *rightC)
+PF-BF-19	BF	7348054f268f	io/serial.c	708	708	in-bounds	734 lines	?	unchanged	while (1) {
+PF-BF-19	INAV	ae47bcba0182	io/serial.c	526	526	in-bounds	569 lines	?	unchanged	void serialPassthrough(serialPort_t *left, serialPort_t *right, serialConsumer
+PF-BF-20	BF	7348054f268f	fc/rc_controls.c	225	225	in-bounds	432 lines	?	unchanged	} else if (rcSticks == THR_LO + YAW_HI + PIT_CE + ROL_CE && !IS_RC_MODE_ACTIVE(BOXSTICKCOMMANDDISABLE)) { // disable stick arming if STICK COMMAND DIS
+PF-BF-20	BF	7348054f268f	fc/rc_controls.c	226	226	in-bounds	432 lines	?	unchanged	if (rcDelayMs >= ARM_DELAY_MS && !doNotRepeat) {
+PF-BF-20	BF	7348054f268f	fc/rc_controls.c	229	230	in-bounds	432 lines	?	unchanged	// Arm via YAW / tryArm();
+PF-BF-20	BF	7348054f268f	fc/rc_controls.c	430	430	in-bounds	432 lines	?	unchanged	isUsingSticksToArm = !isModeActivationConditionPresent(BOXARM) && systemConfig()->enableStickArming;
+PF-BF-20	BF	7348054f268f	cli/settings.c	1730	1730	in-bounds	2041 lines	?	unchanged	{ "enable_stick_arming",        VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_SYSTEM_CONFIG, offsetof(systemConfig_t,
+PF-BF-20	BF	7348054f268f	fc/rc_controls.c	225	225	in-bounds	432 lines	?	unchanged	} else if (rcSticks == THR_LO + YAW_HI + PIT_CE + ROL_CE && !IS_RC_MODE_ACTIVE(BOXSTICKCOMMANDDISABLE)) { // disable stick arming if STICK COMMAND DIS
+PF-BF-20	BF	7348054f268f	config/config.c	121	121	in-bounds	815 lines	?	unchanged	.enableStickArming = false,
+PF-BF-20	BF	7348054f268f	fc/rc_controls.c	71	72	in-bounds	432 lines	?	unchanged	// true if arming is done via the sticks (as opposed to a switch) / static bool isUsingSticksToArm = true;
+PF-BF-20	BF	7348054f268f	fc/rc_controls.c	430	430	in-bounds	432 lines	?	unchanged	isUsingSticksToArm = !isModeActivationConditionPresent(BOXARM) && systemConfig()->enableStickArming;
+PF-BF-20	BF	7348054f268f	fc/core.c	201	201	in-bounds	1434 lines	?	unchanged	&& !isUsingSticksForArming()     // require switch arming for safety
+PF-BF-21	BF	7348054f268f	msp/msp_protocol.h	231	231	in-bounds	279 lines	?	unchanged	#define MSP_SET_OSD_CANVAS              188  // in message:  Set OSD canvas size COLSxROWS
+PF-BF-21	BF	7348054f268f	msp/msp.c	4391	4391	in-bounds	4481 lines	?	unchanged	case MSP_SET_OSD_CANVAS:
+PF-BF-21	BF	7348054f268f	msp/msp.c	4404	4405	in-bounds	4481 lines	?	unchanged	writeEEPROM(); / systemReset();
+PF-BF-22	BF	7348054f268f	msp/msp_box.c	49	49	in-bounds	419 lines	?	unchanged	{ .boxId = BOXARM, .boxName = "ARM", .permanentId = 0 },
+PF-BF-22	BF	7348054f268f	msp/msp_box.c	169	176	in-bounds	419 lines	?	unchanged	int serializeBoxPermanentIdFn(sbuf_t *dst, const box_t *box) / { / if (sbufBytesRemaining(dst) < 1) {
+PF-BF-22	BF	7348054f268f	msp/msp_box.c	180	198	in-bounds	419 lines	?	unchanged	void serializeBoxReply(sbuf_t *dst, int page, serializeBoxFn *serializeBox) / { / unsigned boxIdx = 0;
+PF-BF-22	BF	7348054f268f	msp/msp_box.c	402	414	in-bounds	419 lines	?	unchanged	int packFlightModeFlags(boxBitmask_t *mspFlightModeFlags) / { / // Serialize the flags in the order we delivered them, ignoring BOXNAMES and BOXINDEXE
+PF-BF-22	BF	7348054f268f	msp/msp_box.c	408	414	in-bounds	419 lines	?	unchanged	unsigned mspBoxIdx = 0;           // index of active boxId (matches sent permanentId and boxNames) / for (boxId_e boxId = 0; boxId < CHECKBOX_ITEM_COU
+PF-BF-22	BF	7348054f268f	msp/msp.c	2336	2340	in-bounds	4481 lines	?	unchanged	case MSP_BOXIDS: / { / const int page = sbufBytesRemaining(src) ? sbufReadU8(src) : 0;
+PF-BF-22	BF	7348054f268f	msp/msp_box.c	49	49	in-bounds	419 lines	?	unchanged	{ .boxId = BOXARM, .boxName = "ARM", .permanentId = 0 },
+PF-BF-22	BF	7348054f268f	msp/msp_box.c	169	176	in-bounds	419 lines	?	unchanged	int serializeBoxPermanentIdFn(sbuf_t *dst, const box_t *box) / { / if (sbufBytesRemaining(dst) < 1) {
+PF-BF-22	BF	7348054f268f	msp/msp_box.c	180	198	in-bounds	419 lines	?	unchanged	void serializeBoxReply(sbuf_t *dst, int page, serializeBoxFn *serializeBox) / { / unsigned boxIdx = 0;
+PF-BF-22	BF	7348054f268f	msp/msp.c	2336	2340	in-bounds	4481 lines	?	unchanged	case MSP_BOXIDS: / { / const int page = sbufBytesRemaining(src) ? sbufReadU8(src) : 0;
+PF-BF-22	BF	7348054f268f	msp/msp_box.c	402	414	in-bounds	419 lines	?	unchanged	int packFlightModeFlags(boxBitmask_t *mspFlightModeFlags) / { / // Serialize the flags in the order we delivered them, ignoring BOXNAMES and BOXINDEXE
+PF-BF-22	BF	7348054f268f	msp/msp_box.c	408	414	in-bounds	419 lines	?	unchanged	unsigned mspBoxIdx = 0;           // index of active boxId (matches sent permanentId and boxNames) / for (boxId_e boxId = 0; boxId < CHECKBOX_ITEM_COU
+PF-BF-23	BF	7348054f268f	msp/msp_protocol.h	176	176	in-bounds	279 lines	?	unchanged	#define MSP_RC                          105  // out message: RC channels and more
+PF-BF-23	BF	7348054f268f	msp/msp.c	1317	1321	in-bounds	4481 lines	?	unchanged	case MSP_RC: / for (int i = 0; i < rxRuntimeState.channelCount; i++) { / sbufWriteU16(dst, rcData[i]);
+PF-BF-23	INAV	ae47bcba0182	msp/msp_protocol.h	238	238	in-bounds	308 lines	?	unchanged	#define MSP_RC                   105    //out message         rc channels and more
+PF-BF-23	INAV	ae47bcba0182	fc/fc_msp.c	621	625	in-bounds	4397 lines	?	unchanged	case MSP_RC: / for (int i = 0; i < rxRuntimeConfig.channelCount; i++) { / sbufWriteU16(dst, rxGetChannelValue(i));
+PF-INAV-02	INAV	ae47bcba0182	fc/fc_core.c	200	225	in-bounds	1056 lines	?	unchanged	static void updateArmingStatus(void) / { / if (ARMING_FLAG(ARMED)) {
+PF-INAV-03	INAV	ae47bcba0182	rx/rx.c	657	657	in-bounds	702 lines	?	unchanged	int16_t rxGetChannelValue(unsigned channelNumber)
+PF-INAV-04	INAV	ae47bcba0182	fc/fc_msp.c	570	570	in-bounds	4397 lines	?	unchanged	case MSP2_INAV_LOGIC_CONDITIONS_STATUS:
+PF-INAV-04	INAV	ae47bcba0182	msp/msp_protocol_v2_inav.h	68	68	in-bounds	122 lines	?	unchanged	#define MSP2_INAV_LOGIC_CONDITIONS_STATUS       0x2026
+PF-INAV-04	INAV	ae47bcba0182	fc/fc_msp.c	575	575	in-bounds	4397 lines	?	unchanged	case MSP2_INAV_GVAR_STATUS:
+PF-INAV-04	INAV	ae47bcba0182	msp/msp_protocol_v2_inav.h	69	69	in-bounds	122 lines	?	unchanged	#define MSP2_INAV_GVAR_STATUS                   0x2027
+PF-INAV-05	INAV	ae47bcba0182	rx/rx.c	489	489	in-bounds	702 lines	?	unchanged	sample = rcChannels[channel].data;   // hold channel, replace with old value
+PF-INAV-05	INAV	ae47bcba0182	rx/rx.c	500	506	in-bounds	702 lines	?	unchanged	 / // Update channel input value if receiver is not in failsafe mode / // If receiver is in failsafe (not receiving signal or sending invalid channel 
+PF-INAV-06	INAV	ae47bcba0182	rx/rx.c	271	272	in-bounds	702 lines	?	unchanged	rcChannels[i].raw = PWM_RANGE_MIDDLE; / rcChannels[i].data = PWM_RANGE_MIDDLE;
+PF-INAV-06	INAV	ae47bcba0182	rx/rx.c	279	289	in-bounds	702 lines	?	unchanged	// Initialize ARM switch to OFF position when arming via switch is defined / for (int i = 0; i < MAX_MODE_ACTIVATION_CONDITION_COUNT; i++) { / if (mod
+PF-INAV-07	INAV	ae47bcba0182	fc/fc_core.c	220	225	in-bounds	1056 lines	?	unchanged	/* CHECK: RX signal */ / if (!failsafeIsReceivingRxData()) { / ENABLE_ARMING_FLAG(ARMING_DISABLED_RC_LINK);
+PF-INAV-07	INAV	ae47bcba0182	flight/failsafe.c	289	289	in-bounds	634 lines	?	unchanged	return (failsafeState.rxLinkState == FAILSAFE_RXLINK_UP);
+PF-INAV-07	INAV	ae47bcba0182	flight/failsafe.c	165	165	in-bounds	634 lines	?	unchanged	failsafeState.rxLinkState = FAILSAFE_RXLINK_DOWN;
+PF-INAV-07	INAV	ae47bcba0182	fc/runtime_config.h	38	38	in-bounds	218 lines	?	unchanged	ARMING_DISABLED_RC_LINK                         = (1 << 18),
+PF-INAV-07	INAV	ae47bcba0182	fc/fc_msp.c	459	459	in-bounds	4397 lines	?	unchanged	case MSP2_INAV_STATUS:
+PF-INAV-08	INAV	ae47bcba0182	io/osd/custom_elements.c	215	215	in-bounds	249 lines	?	unchanged	*buff = sl_toupper((unsigned char)customElement->osdCustomElementText[i]);
+PF-INAV-09	INAV	ae47bcba0182	msp/msp_protocol_v2_inav.h	114	114	in-bounds	122 lines	?	unchanged	#define MSP2_INAV_SET_CUSTOM_OSD_ELEMENTS       0x2102
+PF-INAV-09	INAV	ae47bcba0182	msp/msp_protocol_v2_inav.h	112	112	in-bounds	122 lines	?	unchanged	#define MSP2_INAV_CUSTOM_OSD_ELEMENTS           0x2100
+PF-INAV-09	INAV	ae47bcba0182	io/osd/custom_elements.h	24	24	in-bounds	83 lines	?	unchanged	#define MAX_CUSTOM_ELEMENTS 8
+PF-INAV-09	INAV	ae47bcba0182	io/osd/custom_elements.h	23	23	in-bounds	83 lines	?	unchanged	#define CUSTOM_ELEMENTS_PARTS 3
+PF-INAV-09	INAV	ae47bcba0182	io/osd/custom_elements.h	22	22	in-bounds	83 lines	?	unchanged	#define OSD_CUSTOM_ELEMENT_TEXT_SIZE 16
+PF-INAV-09	INAV	ae47bcba0182	fc/fc_msp.c	3519	3519	in-bounds	4397 lines	?	unchanged	case MSP2_INAV_SET_CUSTOM_OSD_ELEMENTS:
+PF-INAV-09	INAV	ae47bcba0182	target/common.h	172	172	in-bounds	230 lines	?	unchanged	#define USE_PROGRAMMING_FRAMEWORK
+PF-INAV-09	INAV	ae47bcba0182	fc/fc_msp.c	3521	3521	in-bounds	4397 lines	?	unchanged	if ((dataSize == (OSD_CUSTOM_ELEMENT_TEXT_SIZE - 1) + (CUSTOM_ELEMENTS_PARTS * 3) + 4) && (tmp_u8 < MAX_CUSTOM_ELEMENTS)) {
+PF-INAV-09	INAV	ae47bcba0182	io/osd/custom_elements.h	26	63	in-bounds	83 lines	?	unchanged	typedef enum { / CUSTOM_ELEMENT_TYPE_NONE            = 0, / CUSTOM_ELEMENT_TYPE_TEXT            = 1,
+PF-INAV-09	INAV	ae47bcba0182	io/osd/custom_elements.h	28	28	in-bounds	83 lines	?	unchanged	CUSTOM_ELEMENT_TYPE_TEXT            = 1,
+PF-INAV-09	INAV	ae47bcba0182	io/osd/custom_elements.h	60	60	in-bounds	83 lines	?	unchanged	CUSTOM_ELEMENT_VISIBILITY_ALWAYS    = 0,
+PF-INAV-09	INAV	ae47bcba0182	fc/fc_msp.c	1732	1737	in-bounds	4397 lines	?	unchanged	case MSP2_INAV_CUSTOM_OSD_ELEMENTS: / { / sbufWriteU8(dst, MAX_CUSTOM_ELEMENTS);
+PF-INAV-10	INAV	ae47bcba0182	fc/fc_msp.c	3519	3540	in-bounds	4397 lines	?	unchanged	case MSP2_INAV_SET_CUSTOM_OSD_ELEMENTS: / sbufReadU8Safe(&tmp_u8, src); / if ((dataSize == (OSD_CUSTOM_ELEMENT_TEXT_SIZE - 1) + (CUSTOM_ELEMENTS_PARTS
+PF-INAV-11	INAV	ae47bcba0182	fc/cli.c	4889	4889	in-bounds	5088 lines	?	unchanged	CLI_COMMAND_DEF("serialpassthrough", "passthrough serial data to port", "<id> [baud] [mode] [options]: passthrough to serial", cliSerialPassthrough),
+PF-INAV-11	INAV	ae47bcba0182	fc/cli.c	1032	1032	in-bounds	5088 lines	?	unchanged	tfp_printf("Forwarding data to %d, power cycle to exit.\r\n", id);
+PF-INAV-11	INAV	ae47bcba0182	fc/cli.c	1034	1034	in-bounds	5088 lines	?	unchanged	serialPassthrough(cliPort, passThroughPort, NULL, NULL);
+PF-INAV-11	INAV	ae47bcba0182	io/serial.c	526	526	in-bounds	569 lines	?	unchanged	void serialPassthrough(serialPort_t *left, serialPort_t *right, serialConsumer
+PF-INAV-12	INAV	ae47bcba0182	fc/rc_controls.c	215	219	in-bounds	376 lines	?	unchanged	if (STATE(AIRPLANE) && ifMotorstopFeatureEnabled() && armingConfig()->fixed_wing_auto_arm) { / // Auto arm on throttle when using fixedwing and motors
+PF-INAV-12	INAV	ae47bcba0182	fc/rc_controls.c	213	213	in-bounds	376 lines	?	unchanged	bool armingSwitchIsActive = IS_RC_MODE_ACTIVE(BOXARM);
+PF-INAV-12	INAV	ae47bcba0182	fc/rc_controls.c	223	225	in-bounds	376 lines	?	unchanged	if (armingSwitchIsActive) { / rcDisarmTimeMs = currentTimeMs; / tryArm();
+PF-INAV-12	INAV	ae47bcba0182	fc/rc_controls.c	249	250	in-bounds	376 lines	?	unchanged	/* Disable stick commands when armed, in CLI mode or CMS is active */ / bool disableStickCommands = ARMING_FLAG(ARMED) || cliMode;
+PF-INAV-12	INAV	ae47bcba0182	fc/rc_controls.c	258	258	in-bounds	376 lines	?	unchanged	/* REMAINING SECTION HANDLES STICK COMANDS ONLY */
+PF-EXT-03	BF	7348054f268f	msp/msp_protocol.h	107	107	in-bounds	279 lines	?	unchanged	#define MSP_SET_MODE_RANGE              35   // in message:  Sets a single mode range
+
+# repo identities
+# BF    7348054f268f0058574719c134e9f149565bb8ea  tag 2025.12.5
+# INAV  ae47bcba018270eb5db6f04bef7dbde2b781d579  tag 8.0.1
+# facts checked     : 39
+# citations checked : 134
+# by platform       : {'BF': 89, 'INAV': 45}
+# unresolved        : none

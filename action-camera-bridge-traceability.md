@@ -2221,6 +2221,63 @@ saying.
 
 ---
 
+### CR-56 — the corpus sweep's first find: `PF-BF-22` was wrong on every coordinate · **CLOSED**
+
+CR-50's third consequence held that prospective citation hygiene does not cover the 38 platform facts
+already recorded, and that the pre-release sweep is the only control that does. **The sweep found a second
+fact with entirely wrong coordinates on its first run.**
+
+| Claim | Recorded | Actual at `2025.12.5` | What the recorded line actually is |
+| --- | --- | --- | --- |
+| `BOXARM` … `permanentId = 0` | `msp_box.c:43-46` | **`:49`** | an `#include` block |
+| `serializeBoxPermanentIdFn()` | `:161-168` | **`:169-176`** | the tail of an unrelated function |
+| `serializeBoxReply()` | `:171-186` | **`:180-198`** | a bounds check |
+| `packFlightModeFlags()` | `:377-395`, `:381-390` | **`:402-414`**, `:408-414` | a `bitArrayClr` branch |
+| `MSP_BOXIDS` dispatch | `msp.c:2171-2175` | **`:2336-2340`** | **RTC code** |
+
+**Six of six wrong, in a fact whose interlock `SETUP-09` depends on** to refuse a maintenance entry while
+the aircraft is armed.
+
+**The claim was correct throughout.** `BOXARM.permanentId` *is* 0, and `packFlightModeFlags()` *does*
+traverse the same active-box iteration — its comment at the corrected `:408-414` reads *"index of active
+boxId (matches sent permanentId and boxNames)"*, which is the correspondence the fact rests on. So this is a
+**coordinate repair, not a content repair**, and it is the second demonstration that those are separate
+controls.
+
+**Same provenance as `PF-BF-23`, and that is the pattern.** Both facts were added to close a change record
+held open for a missing platform fact — CR-24 and CR-44. Both were written from coordinates supplied in a
+review message. **Both were recorded while stating openly that they could not be verified**, and both were
+wrong on every coordinate. The discipline that produced the facts was sound; the step that recorded numbers
+nobody had opened was not.
+
+**What the sweep is, now that it has paid for itself.** 39 facts, **134 citations**, every one resolved
+against the pinned commits `7348054f268f` (BF `2025.12.5`) and `ae47bcba0182` (INAV `8.0.1`), read from the
+git object store rather than a working tree. The two totals are reported separately because **one fact may
+carry several citations** — 39 alone would have hidden `PF-BF-22`'s six.
+
+**Three tool defects were fixed before the sweep could be trusted**, each of which would have produced a
+false result:
+
+- platform resolved per line rather than per position, so a side-by-side `/* [BF] */ /* [INAV] */` fence
+  reported a Betaflight path as an unresolved INAV one;
+- platform context not carried across a line break, so `... ([BF]` ending one line and its citation
+  beginning the next resolved to the wrong repo;
+- blockquoted **version notes** parsed as live citations, so the sweep tried to verify the superseded
+  coordinates a version note exists to record as wrong — a category error, and the reason live citations
+  are now 134 rather than 141.
+
+**A false FATAL is worse than no check**, because it teaches the reader to skim past the word.
+
+### What remains unverified, stated plainly
+
+The sweep establishes that **every citation resolves and every coordinate lands on content consistent with
+its claim**, read row by row. It does **not** establish that each claim is the best reading of that code —
+that is audit 5b's job and the pre-release re-verification's. `content_match` is adjudicated by reading the
+extract the tool emits; the tool does not decide it, because a tool that scored semantics would have scored
+`PF-BF-22` as passing for two deltas.
+
+---
+
 ## 6. Acceptance
 
 > *Compression succeeds only when the shorter specification admits exactly the same conforming
