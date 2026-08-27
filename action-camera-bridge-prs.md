@@ -1035,14 +1035,32 @@ boot
  │        execute the RAM copy
  │
  3. otherwise
-        → RUN
+ │      → RUN
+ │
+ in every case, before the selected mode is entered
+        → retire the retained request
 ```
+
+**Selection retires every request, not only the one it executes.** After boot selection, **no retained
+request that was not selected for execution remains valid.** Rules 1 and 3 reach their mode without
+reading the request; retiring it is a separate obligation they discharge anyway, because the alternative
+is a request that outlives the boot that declined it and fires on an unrelated later one. That is
+`FAIL-01`'s *"a retained boot request surviving into an unrelated software restart"*, and before v1.9 no
+requirement forbade it on the two paths that decline (v1.9, `CR-57`).
+
+**Retiring is a write, not a read.** The obligation is to clear the validity marker, and clearing it
+requires knowing neither what mode was requested nor whether a request was present. So it costs rules 1
+and 3 none of their independence from persistent state. *(With `BOOT-05`'s NVS fallback the
+implementation may read the marker first to avoid an erase when nothing is stored; reading the marker is
+not interpreting the request.)*
 
 **BOOT-04.** The held-button path has **absolute priority and depends on nothing persistent**. It shall
 not consult the retained request, the configuration store, stored camera identity or BLE bonding state.
 Setup Mode is the only route to firmware update (`UPD-02`) and to recovering a corrupted configuration,
 so an entry mechanism depending on healthy persistent storage would make those unreachable in exactly
-the case they exist for.
+the case they exist for. It shall nonetheless retire the retained request per `BOOT-03` — **blindly**,
+without reading its contents — so that a request the button overrode cannot fire on the software restart
+that later exits Setup Mode.
 
 **BOOT-05.** The boot request shall be held in **retained RAM that survives a deliberate software
 restart, not in flash**. It therefore causes no flash write, no wear, and has no durable-clear step and
@@ -1053,12 +1071,22 @@ failure falling back to `RUN`.)*
 **BOOT-06 — consume before enter.** The retained request shall be invalidated **before** the requested
 mode is executed, not after. `ESP_RST_SW` is not exclusive to the bridge's own mode transitions —
 completing a firmware update restarts the same way (`UPD-05`) — and a request left valid would be
-replayed into an unintended maintenance boot with nobody present.
+replayed into an unintended maintenance boot with nobody present. This is `BOOT-03`'s retire obligation
+on the one path that also *reads* the request, and it carries the additional ordering constraint: the
+copy is taken, the retained request is retired, and only then is the copy executed.
 
 **BOOT-07.** **Every other reset reason selects `RUN`, whatever the retained memory contains.**
 Power-on, external reset, brownout, watchdog and panic all decline the request **without inspecting
-it**. This makes *an interrupted maintenance boot never resumes itself* a property of the reset path
-rather than of a write ordering an implementer must get right.
+it**, and retire it per `BOOT-03`. This makes *an interrupted maintenance boot never resumes itself* a
+property of the reset path rather than of a write ordering an implementer must get right.
+
+**Declining and retiring are separate obligations, and only the first is about this boot.** Power-on and
+brownout close themselves physically — retained RAM does not survive either, so nothing is left to fire.
+Watchdog, panic and external reset do not: each leaves the retained region intact, so a maintenance
+restart interrupted between `bootRequestSet` and the restart landing would otherwise leave a valid
+request for the next `ESP_RST_SW` to consume — and `BOOT-06` names a routine one, the restart that
+completes a firmware update. **The three reasons that can carry a request forward are exactly the three
+that indicate something went wrong**, which is when an unattended maintenance boot is least wanted.
 
 **BOOT-08 — who may create a boot request is a closed list.**
 

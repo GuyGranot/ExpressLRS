@@ -536,12 +536,12 @@ either** — no `X-01`…`X-05` range, no `X-*` wildcard — and the counting sc
 if it finds one, rather than counting the shorthand as the two IDs it mentions.
 
 ```
-current, regenerated 2026-08-27 from the v1.8 artifacts
+current, regenerated 2026-08-27 from the v1.9 artifacts
 
-  table-case relations        417      200 cases
+  table-case relations        423      202 cases
   spike relations              72        7 cases
                              ────
-  total                       489      207 cases; every case carries at least one
+  total                       495      209 cases; every case carries at least one
 
   spike Verifies lines are derived from pass criteria, not authored (CR-49).
   12 requirement mentions remain in spike bodies with no edge, each adjudicated
@@ -2275,6 +2275,90 @@ its claim**, read row by row. It does **not** establish that each claim is the b
 that is audit 5b's job and the pre-release re-verification's. `content_match` is adjudicated by reading the
 extract the tool emits; the tool does not decide it, because a tool that scored semantics would have scored
 `PF-BF-22` as passing for two deltas.
+
+### CR-57 — a declined boot request outlived the boot that declined it · **CLOSED in v1.9**
+
+**Raised from the implementation, not from an audit round.** Phase 1 implemented `BOOT-03` literally, as a
+pure function over `(buttonHeld, resetReason, retainedRequest)`, and the literal reading has a hole.
+
+`BOOT-06` invalidates the request on **one** path — the `ESP_RST_SW` path that actually consumes it. The
+other two say nothing about the request's fate:
+
+| Path | What the requirement said | What it left behind |
+| --- | --- | --- |
+| `ESP_RST_SW` + valid request | copy, invalidate, execute (`BOOT-06`) | nothing — correct |
+| watchdog / panic / external reset | selects `RUN`, declines *"without inspecting it"* (`BOOT-07`) | **a still-valid request** |
+| Setup button held | `SETUP`, *"depends on nothing persistent"* (`BOOT-04`) | **a still-valid request** |
+
+Both survivors fire the same way: the next `ESP_RST_SW` consumes them. And `BOOT-06` itself names a routine
+source of one — *"completing a firmware update restarts the same way (`UPD-05`)"*. The second path is the
+worse of the two, because the restart that exits Setup Mode is an ordinary `ESP_RST_SW`, so a `PAIR` request
+the button overrode fires as soon as the user leaves Setup.
+
+**Power-on and brownout were never affected.** Retained RAM does not survive either, so those two close
+themselves physically. The three that do carry a request forward — watchdog, panic, external reset — are
+exactly the three that indicate something went wrong, which is when an unattended maintenance boot is least
+wanted.
+
+**The validation did not cover it, and looked as though it did.** `VAL-FUNC-35` tests replay, but only of a
+*consumed* request. `VAL-FUNC-33` and `VAL-FAIL-40` test the held-button override, but only that it selects
+`SETUP` — neither follows the retained request past the boot in which it was overridden. Every case asserted
+**immediate selection**; none asserted a **lifetime property**.
+
+**The failure catalogue was stronger than the requirements it indexes.** `FAIL-01` has listed *"a retained
+boot request surviving into an unrelated software restart"* since v1.2, and `VAL-REV-11` checks that every
+`FAIL-01` entry has a `VAL-FAIL-*` case — which it had, in `VAL-FAIL-39` (corrupt retained memory) and
+`VAL-FAIL-37` (power removed during `PAIR`). Coverage was satisfied by cases that address a *different*
+survival path from the one the entry names. **A coverage check that counts cases per hazard cannot see that
+the cases miss the hazard**, and that is the reusable finding here, not the boot defect.
+
+**The repair is one invariant, stated once.** `BOOT-03` gains it — *after boot selection, no retained request
+that was not selected for execution remains valid* — and `BOOT-04`, `BOOT-06` and `BOOT-07` each point at it
+rather than restating it. Retiring is specified as a **write and not a read**, which is what preserves
+`BOOT-04`'s independence from persistent state: clearing the validity marker requires knowing neither what
+was requested nor whether anything was. `BOOT-05`'s NVS fallback is allowed to read the marker first to avoid
+an erase per boot, since reading the marker is not interpreting the request.
+
+**`VAL-FAIL-61` and `VAL-FAIL-62` test the lifetime, not the selection.** Each drives a *sequence* — place a
+valid `PAIR` request, force the boot, then perform an unrelated restart and assert `RUN` — because a
+single-boot assertion is what missed this for seven deltas.
+
+| | before | after |
+| --- | --- | --- |
+| requirements | 251 | 251 |
+| validation cases | 207 | **209** |
+| relations | 489 | **495** |
+| platform facts | 39 | 39 |
+
+Four requirements amended in place, no ID added or removed. `verify.py`, `orphan.py`, `v16_edges.py` and
+`spikegap2.py` re-run clean: 0 orphans, 0 dangling refs, 0 vague terms, body-only mentions unchanged at 12.
+
+---
+
+## 5j. v1.9 delta — applied 2026-08-27
+
+**What triggered it.** One finding, raised by implementing `BOOT-03` rather than by reviewing it.
+
+| # | Change | Kind | CR |
+| --- | --- | --- | --- |
+| 1 | `BOOT-03` — selection retires every request; retiring specified as a write, not a read | specification | CR-57 |
+| 2 | `BOOT-04` — the held-button path retires the request **blindly** | specification | CR-57 |
+| 3 | `BOOT-06` — recast as `BOOT-03`'s obligation on the one path that also reads the request | specification | CR-57 |
+| 4 | `BOOT-07` — declining and retiring separated; the three reset reasons that carry a request forward named | specification | CR-57 |
+| 5 | `VAL-FAIL-61`, `VAL-FAIL-62` added — replay **sequences**, not single-boot selection | validation | CR-57 |
+
+**251 requirements, 209 validation cases, 39 platform facts, 495 relations.** No requirement added or
+removed; four amended in place.
+
+### What this delta says about the method
+
+**Seven audit rounds did not find it, and one implementation did.** The audits check the graph — orphans,
+dangling refs, coverage per hazard, entailment between requirements. This defect is invisible to all four,
+because every requirement involved was well-formed, referenced, covered and internally consistent. It is
+only visible from the question an implementer is forced to ask and a reader is not: *after this function
+returns, what is left in that struct?*
+
+`CR-52` remains the only open change record, and remains release-blocking.
 
 ---
 
