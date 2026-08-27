@@ -382,9 +382,29 @@ calls `writeEEPROM()` **and `systemReset()`** where the FC was not already in HD
 It is **one digit** from the permitted read `MSP_OSD_CANVAS` (189) in both name and ID. An implementer
 fetching canvas dimensions to format `OSD-02` fields is one keystroke from an in-flight FC reset.
 
----
+### PF-BF-22 — ARM's permanent ID, and its correspondence to the status bit
+*Supports `FC-12`. **Both halves are normative and are stated in the PRS.** Added 2026-08-27, closing CR-24 —
+a conformance input that was absent from both documents.*
 
-## 2. INAV platform facts
+[BF] `msp/msp_box.c:43-46`, `:161-168`, `:171-186`, `:377-395` (the correspondence at `:381-390`);
+`msp/msp.c:2171-2175`.
+
+| Fact | Where |
+| --- | --- |
+| `BOXARM` is declared in `boxes[]` with name `"ARM"` and **`permanentId = 0`** | `msp_box.c:43-46` |
+| `serializeBoxPermanentIdFn()` writes `box->permanentId` directly — the response carries permanent IDs, not `boxId` values | `msp_box.c:161-168` |
+| `serializeBoxReply()` iterates `boxId` ascending and emits **only active boxes** | `msp_box.c:171-186` |
+| `MSP_BOXIDS` dispatches to that serializer | `msp.c:2171-2175` |
+| `packFlightModeFlags()` traverses the **same active-box iteration**, incrementing `mspBoxIdx` as the status-bit index, documented as matching the sent permanent IDs and box names — *"in the order we delivered them"* | `msp_box.c:377-395`, load-bearing at `:381-390` |
+
+**The consequence, and it is the whole point of the lookup:** the **position of permanent ID 0 in the
+`MSP_BOXIDS` response** is ARM's bit position in `MSP_STATUS`'s flight-mode flags.
+
+**The permanent ID is fixed; the bit position is not.** `serializeBoxReply()` emits only *active* boxes, so
+the packed index of any box depends on which modes the pilot has configured. **An implementation that
+hardcodes ARM to bit 0 is correct only on a craft where ARM is the sole active box** — and it fails silently
+elsewhere, reading some other mode's bit as the arming interlock. That is the failure `FC-12`'s lookup
+exists to prevent, and recording only `permanentId = 0` without this correspondence would have invited it.
 
 ### PF-INAV-01 — `MSP_RTC` / `MSP_SET_RTC`
 See `PF-BF-02`; the two facts are one table.

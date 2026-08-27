@@ -1,23 +1,28 @@
 # Action Camera Bridge — Product Requirements Specification
 
-**Status:** **v1.4 — audited baseline, 2026-08-27.** 247 requirements, 202 validation cases, 37 platform
-facts.
+**Status:** **v1.5 — audited baseline, 2026-08-27.** 247 requirements, 203 validation cases, 38 platform
+facts, 403 case↔requirement relations.
 
 **Audit status is stated per audit, because it differs per audit.** The v1.3 header claimed *"seven audits
-re-run … all clean except CR-24"*; four blocks had been regenerated, audit 6 had read 16 of its 116 flagged
-pairs, and audit 7 had not been re-run at all (v1.4, CR-26).
+re-run … all clean"* when four had run; the v1.4 header called audit 6 complete when it had read 27 % of its
+relations (CR-26, CR-38).
 
-| Audit | State at v1.4 |
+| Audit | State at v1.5 |
 | --- | --- |
 | 1 · requirement-equivalence | **historical.** Scoped to the compression boundary, a past event; not re-runnable, and §1's dispositions are the record |
 | 2 · reverse | **historical**, same scope |
-| 3 · boundary-value | **re-run, clean.** Extended in v1.4 to closed enumerations, which its stated contract covered and its extraction method did not (CR-30) |
+| 3 · boundary-value | **re-run, clean.** Covers closed enumerations since v1.4 (CR-30) and `FC-12`'s constant since v1.5 |
 | 4 · traceability | **re-run, clean** |
-| 5 · conformance-input | **re-run; one open item, CR-24** — a Betaflight platform constant absent from both the PRS and Evidence, blocking the maintenance-gesture interlock (`SETUP-05`, `SETUP-09`) and nothing else |
-| 6 · validation-entailment | **re-run and now complete.** Every flagged pair read individually in v1.4, not only the zero-overlap ones (CR-32) |
-| 7 · internal-consistency | **re-run in v1.4, having been skipped in v1.3.** That skip is why `PAIR-11`'s equality collision reached a published baseline (CR-27) |
+| 5 · conformance-input | **re-run, clean. 139/139 — no input is absent or Evidence-only**, for the first time since this audit existed (CR-24, CR-37) |
+| 6 · validation-entailment | **complete for the first time: all 403 relations read**, not the 110 a lexical screen selected. The screen is retired as a selector (CR-38) |
+| 7 · internal-consistency | **re-run, clean.** Skipped in v1.3, which is why `PAIR-11`'s equality collision reached a published baseline (CR-27) |
 
-**Open: CR-24** (above) and **CR-11** by decision. Everything else is closed.
+**Open: CR-11 only, by decision.** CR-24 closed in v1.5 against Betaflight `2025.12.5` source.
+
+**What "complete" claims, and what it does not.** Every relation was read; one of the 110 read in v1.4 was
+misjudged on a careful pass. The honest estimate is that a few of the 403 are still wrong and nobody knows
+which. **The claim here is that the header matches the evidence beneath it**, not that the artifacts are
+correct.
 
 **This is not frozen, and the last two deltas are why.** v1.2 was declared frozen and did not survive review;
 v1.3 replaced the freeze with a claim of completeness that did not survive it either. **A baseline is
@@ -26,9 +31,11 @@ Subsequent findings — including Osmo Nano / DUML results — land as a new del
 **Historical ledger blocks are not edited in place; measured blocks are regenerated at every delta** (§5d).
 Compressed from PRS v1.0 (`action-camera-bridge-prs-source-v1.0.md`,
 sha256 `e6178686acfa71e932784cf44041a988f9d72e8ff64162c89588bce8a700b473`) under the compression rule
-of 2026-08-26, **plus the separately reviewed v1.1 and v1.2 normative deltas recorded in Traceability
-Ledger §5a and §5b.** The compression boundary itself changed no requirement; the deltas since it did, and
-each is itemised. Every disposition is recorded in the Ledger.
+of 2026-08-26, **plus the separately reviewed v1.1, v1.2, v1.3, v1.4 and v1.5 deltas recorded in
+Traceability Ledger §5a–§5f.** **No requirement change was intended at the compression boundary; seven
+source obligations were nevertheless lost there** (Ledger §6, which records the acceptance criterion as
+NOT MET). The deltas since have changed requirements deliberately, and each change is itemised. Every
+disposition is recorded in the Ledger.
 **Minimum supported:** Betaflight **2025.12.5**, INAV **8.0.1**
 **Architecture:** Standalone BLE-to-FC bridge over one spare UART
 **Distribution:** Personal / open-source
@@ -285,6 +292,18 @@ determine whether `ARMING_DISABLED_RC_LINK` is currently being maintained (`PF-I
 **FC-12.** No `MSP_BOXIDS` ARM lookup is part of the V1 control contract. **[BF]** where a Maintenance
 Entry AUX is configured (`SETUP-05`), that lookup is required once during identification to locate the
 ARM box bit, and is absent from every build in which no Maintenance Entry AUX has been selected.
+
+**How the bit is located** (`PF-BF-22`). **[BF]** ARM's **permanent ID is 0**. The bridge shall search the
+`MSP_BOXIDS` response for permanent ID 0 and **use that entry's zero-based position in the response as the
+ARM bit index** in `MSP_STATUS`'s flight-mode flags; both are produced from the same active-box traversal.
+
+**The permanent ID is fixed at zero. The bit position is not, and shall not be assumed to be zero.**
+`MSP_BOXIDS` reports only *active* boxes, so ARM's packed position depends on which modes the pilot has
+configured. An implementation that treats ARM as bit 0 is correct only where ARM is the sole active box and
+**reads an unrelated mode's bit as the arming interlock everywhere else** — silently, and in the one place
+(`SETUP-09`) whose entire purpose is refusing a maintenance entry while the aircraft is armed. Where
+permanent ID 0 is absent from the response, the interlock has no input: the bridge shall treat the
+Maintenance Entry AUX as unconfigured (`SETUP-05`) rather than proceed without it.
 
 **FC-13 — the invariant.** A given control in a given range shall produce the same camera action
 regardless of armed state. Armed state may delay the bridge starting to act (`RCV-19`); it shall never
