@@ -1,15 +1,29 @@
 # Action Camera Bridge — Product Requirements Specification
 
-**Status:** **v1.3 — audited baseline, 2026-08-27.** 247 requirements, 202 validation cases, 37 platform
-facts. Seven audits re-run against the artifacts themselves rather than against the ledger's reported
-results; **all clean except one open item, CR-24**, a Betaflight platform constant absent from both the PRS
-and Evidence, which blocks the maintenance-gesture interlock (`SETUP-05`, `SETUP-09`) and nothing else.
-CR-11 remains open by decision.
+**Status:** **v1.4 — audited baseline, 2026-08-27.** 247 requirements, 202 validation cases, 37 platform
+facts.
 
-**This is not frozen.** v1.2 was declared frozen and two specification defects and four stale audit blocks
-survived the declaration; the v1.3 delta (Traceability Ledger §5c) records what that cost. Subsequent
-findings — including Osmo Nano / DUML results — land as a new delta with its own ledger section. **Historical
-ledger blocks are not edited in place; measured blocks are regenerated at every delta** (§5d).
+**Audit status is stated per audit, because it differs per audit.** The v1.3 header claimed *"seven audits
+re-run … all clean except CR-24"*; four blocks had been regenerated, audit 6 had read 16 of its 116 flagged
+pairs, and audit 7 had not been re-run at all (v1.4, CR-26).
+
+| Audit | State at v1.4 |
+| --- | --- |
+| 1 · requirement-equivalence | **historical.** Scoped to the compression boundary, a past event; not re-runnable, and §1's dispositions are the record |
+| 2 · reverse | **historical**, same scope |
+| 3 · boundary-value | **re-run, clean.** Extended in v1.4 to closed enumerations, which its stated contract covered and its extraction method did not (CR-30) |
+| 4 · traceability | **re-run, clean** |
+| 5 · conformance-input | **re-run; one open item, CR-24** — a Betaflight platform constant absent from both the PRS and Evidence, blocking the maintenance-gesture interlock (`SETUP-05`, `SETUP-09`) and nothing else |
+| 6 · validation-entailment | **re-run and now complete.** Every flagged pair read individually in v1.4, not only the zero-overlap ones (CR-32) |
+| 7 · internal-consistency | **re-run in v1.4, having been skipped in v1.3.** That skip is why `PAIR-11`'s equality collision reached a published baseline (CR-27) |
+
+**Open: CR-24** (above) and **CR-11** by decision. Everything else is closed.
+
+**This is not frozen, and the last two deltas are why.** v1.2 was declared frozen and did not survive review;
+v1.3 replaced the freeze with a claim of completeness that did not survive it either. **A baseline is
+described by what was checked, not by a verdict over all of it** (§5d, §5e).
+Subsequent findings — including Osmo Nano / DUML results — land as a new delta with its own ledger section.
+**Historical ledger blocks are not edited in place; measured blocks are regenerated at every delta** (§5d).
 Compressed from PRS v1.0 (`action-camera-bridge-prs-source-v1.0.md`,
 sha256 `e6178686acfa71e932784cf44041a988f9d72e8ff64162c89588bce8a700b473`) under the compression rule
 of 2026-08-26, **plus the separately reviewed v1.1 and v1.2 normative deltas recorded in Traceability
@@ -239,8 +253,12 @@ and OSD capability shall not be inferred from the version alone.
 
 | State | Trigger | Camera control | Platform OSD writes |
 | --- | --- | --- | --- |
-| `UNSUPPORTED_FC_VERSION` | `FC-05` floor not met | **suppressed** | none |
-| telemetry-disabled compatibility | supported version, no OSD capability | active | none |
+| `UNSUPPORTED_FC_VERSION` | `FC-05` floor not met | **suppressed** | none, per `OSD-19` |
+| telemetry-disabled compatibility | supported version, no OSD capability | active | none, per `OSD-19` |
+
+**The camera-control column is this requirement's own; the OSD column is `OSD-19`'s**, shown here because
+the states are otherwise easy to conflate. Both states clear a term of `osdBackendEnabled`, so neither writes
+the OSD — and that consequence is stated once, in `OSD-19`, not three times (v1.4, CR-29).
 
 **FC-09.** Unsupported FC variants shall enter telemetry-disabled compatibility mode and shall not
 send platform-specific OSD writes.
@@ -1195,6 +1213,17 @@ regardless of the currently configured control modes**, and normal polling polic
 when learning ends. Without this the operation runs at 10 Hz, because the 20 Hz rate is otherwise enabled
 only when a Push Button control already exists — the very thing being learned.
 
+**Where this meets `MSP-08`'s fallback.** `MSP-08` permits a target under budget pressure to run Push Button
+polling at 10 Hz. **That fallback does not extend to learning:** the elevation here is user-initiated,
+bounded by `LEARN-06`'s 15 s acquisition timeout and carries no camera actuation (`LEARN-05`), so the budget
+argument that justifies the steady-state fallback does not apply to it.
+
+**A target that cannot reach 20 Hz even for that bounded window shall not offer Push Button controls and
+shall not propose them** — which is `MSP-08`'s existing consequence, reached by the other route. It shall
+not instead learn at 10 Hz: a 250 ms momentary demonstration spans two samples at 20 Hz and may span one at
+10 Hz, so learning at the fallback rate would characterise a Push Button control as a Level control and
+store a mapping that never fires. **Silently mis-learning is worse than declining** (v1.4, CR-27).
+
 **LEARN-05 — camera actuation is suspended during learning.** Qualified samples continue to feed the
 learner and the diagnostic display but **shall not produce camera commands**, and runtime control state
 shall not be modified by movements performed solely during learning. When learning ends the live policy
@@ -1384,6 +1413,17 @@ elapsed**, and **shall not terminate merely because its first supported candidat
 Candidate-set evaluation and `PAIR-08` selection occur **only after completion**. A scan that has not
 completed by the `PAIR-03` bound yields `SCAN_TIMEOUT` and evaluates nothing.
 
+**Precedence at equality: completion wins.** Where the dwell elapses at the same instant the `PAIR-03` bound
+is reached, the scan has **completed**, and `PAIR-05`'s `SCAN_TIMEOUT` — *"reached its bound without
+completing"* — does not arise. The two are not a race to be resolved by implementation timing.
+
+**A consequence, stated rather than left to be discovered:** while `PAIR-12` holds its interim value, that
+value *is* the `PAIR-03` bound, so the dwell always elapses exactly at the bound and **`SCAN_TIMEOUT` is
+unreachable for discovery.** A discovery scan under the interim value completes at 30 s and returns
+`NO_CAMERAS` or a candidate set; the outcome remains reachable for the directed-bind bounds, which are
+unaffected. This is a temporary property of an open parameter, and closing `PAIR-12` at any value below the
+bound restores it (v1.4, CR-27).
+
 Observing camera A at 2 s is no evidence that camera B would not have advertised at 3 s, so a scan that stops
 at the first hit can never establish the *exactly one* case `PAIR-08` turns on. Worse, **selecting the first
 responder is `PAIR-09`'s prohibited behaviour under another name** — the nearest camera is generally the one
@@ -1488,8 +1528,14 @@ state at all.
 
 **MSP-06 — quiet bridge.** The bridge shall: never hold the port busy waiting on a camera or BLE operation;
 tolerate a missing or late reply without blocking; never retry-storm — failed requests back off; never
-write an OSD slot whose rendered content is unchanged (`OSD-06`); and in telemetry-disabled compatibility
-mode issue no OSD writes, continuing only the read-only queries required by enabled camera-control features.
+write an OSD slot whose rendered content is unchanged (`OSD-06`); and **where `OSD-19` disables the OSD
+backend, issue no OSD writes**, continuing only the read-only queries required by enabled camera-control
+features.
+
+**This clause states no condition of its own.** It previously named telemetry-disabled compatibility mode
+directly, which is one of the two degraded states in `FC-08` and narrower than `OSD-19`'s three terms — so
+the same rule stood written in three places at three scopes, and amending `OSD-19` would have left the other
+two behind (v1.4, CR-29).
 
 **MSP-07.** The bridge shall cache the last accepted RC sample. A missing or late reply shall not block the
 MSP task and **shall not synthesize a control transition**; an **incomplete bracket is treated exactly as a
