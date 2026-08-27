@@ -368,10 +368,18 @@ and a delta that reports it as complete has published a false measurement by a s
 
 ### 6.9 What a mechanical screen may and may not conclude *(added after the v1.3 re-audit; completed v1.4)*
 
-Audit 6's reverse leg was screened by lexical overlap between each case and each requirement it cites. On the
-completed run the screen flagged **110 of 414 pairs** against a true defect count of **17** — and on the
-partial run one delta earlier it flagged 116 and the count then stood at three, because only 16 of the 116
-had been read.
+Audit 6's reverse leg was once screened by lexical overlap between each case and each requirement it cites.
+**The figures below are dated snapshots of one artifact generation and are not comparable to each other or to
+the current edge count** — each was taken under a different counting unit, which is the defect CR-45 records.
+
+```
+v1.3   116 flagged of 413 counted;  16 read;   3 defects reported
+v1.4   110 flagged of 414 counted; 110 read;  17 defects total after repair
+v1.5   the unflagged remainder read for the first time; 4 of 5 survivors were never flagged
+```
+
+**Within a single generation the comparison holds, and that is all it needs to hold for:** on the v1.5 run,
+the screen's flagged set contained one of the five surviving defects and the unflagged set contained four.
 
 **A screen orders the reading. It does not perform the audit, and its output shall not be published as a
 finding count.** Entailment is a semantic relation and low lexical overlap is routine in a correct citation —
@@ -394,8 +402,9 @@ the screen may decide     the order in which relations are read
 the screen may not decide which relations are read
 ```
 
-The measurement that settles it: over 403 relations, the screen's 110 flagged contained **one** of five
-surviving defects and the 293 unflagged contained **four**. Lexical overlap is not weakly correlated with
+The measurement that settles it, taken on one artifact generation and quoted in that generation's unit: the
+screen's 110 flagged relations contained **one** of five surviving defects and the 293 unflagged contained
+**four**. Lexical overlap is not weakly correlated with
 entailment failure here; it is **anti**-correlated, because the citations most likely to be decorative are
 the ones whose subject matter matches — which is exactly what produces a high overlap score.
 
@@ -415,6 +424,30 @@ default changes. `CTRL-17` was covered by one case for four deltas on exactly th
 phrase in the case matched a phrase in the requirement and the claims were different. **A relation read once
 is evidence, not proof**; where a delta repairs the surrounding text, prior verdicts are re-derived rather
 than inherited.
+
+### 6.9.1 A relation count is a measurement *(added v1.6, CR-45)*
+
+CR-31 required a reported total to have a stated unit and enumerable membership. That was written for
+conformance inputs and not applied to relations, because a relation count looks like a count of visible
+things. It is not: **three consecutive deltas reported relation totals produced by three different implicit
+units**, and none of the three was written down.
+
+**One relation is one explicit `(case ID, requirement ID)` pair**, enumerated from the case's `Verifies`
+cell or a spike's `**Verifies:**` line, and from nowhere else.
+
+- **No semantic ellipsis in the canonical list.** `X-01`…`X-05` and `X-*` are prohibited, because a counter
+  either expands them — silently deciding what the author meant — or tokenises them, silently counting five
+  relations as two. One range shorthand in one cell understated a total by three for four deltas.
+- **The counter refuses rather than guesses.** Where shorthand is present it emits no number at all. A
+  counting tool that degrades gracefully produces a plausible wrong total, which is worse than no total.
+- **Every case contributes edges or is explicitly outside the audit.** Prose-form cases with no `Verifies`
+  line were described as "read directly" for two deltas, which was true of their text and produced nothing
+  anyone could check. Seven such cases held 58 relations that no count included.
+
+**The general form, and it is the third time this rule has been learned in a different costume:** a measured
+block states its unit, publishes its membership, and is checkable against both. CR-31 learned it for
+inventories, CR-37 for group membership, CR-45 for graph edges. **Each time it was rediscovered rather than
+applied, because the previous statement named the artifact it was about instead of the property.**
 
 ### 6.10 The third audit-5 outcome *(CR-24)*
 

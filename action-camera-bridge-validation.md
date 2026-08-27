@@ -34,7 +34,7 @@ still passes its gate. **One authoritative home, and it is not this document** (
 | `VAL-FUNC-10` | No flash write across a long operating session | `SAFE-07` | Req | Req |
 | `VAL-FUNC-11` | `MSP_RC` returns live AUX values while FC is armed — the platform property `FC-13`'s armed-invariance depends on, confirmed rather than assumed | `FC-13`, `CTRL-12` | Req | Req |
 | `VAL-FUNC-12` | Direct AUX record control via `MSP_RC`. **Run additionally on a radio with non-standard endpoints** (a channel whose configured range sits outside 1000–2000 µs): the stored mapping is explicit ranges, so the control behaves identically to one on a standard radio and no endpoint is assumed anywhere in the path | `CTRL-01`, `CTRL-12` | Req | Req |
-| `VAL-FUNC-13` | Push Button: 250 ms press detected; 100 ms press either detected or ignored, never double-fired. **The event-separation interval is measured, not inferred from the absence of double-firing:** two deliberate qualifying presses separated by **less than** `CTRL-20`'s configured minimum yield **one** event, and two separated by more than it yield two. At the 400 ms default that means a pair at ~300 ms is coalesced and a pair at ~500 ms is not — an implementation with a 200 ms floor passes every other clause of this case and fails here | `CTRL-18`, `CTRL-19`, `CTRL-20` | Req | Req |
+| `VAL-FUNC-13` | Push Button: 250 ms press detected; 100 ms press either detected or ignored, never double-fired. **The event-separation interval is measured, not inferred from the absence of double-firing:** two deliberate qualifying presses separated by **less than** `CTRL-20`'s configured minimum yield **one** event, and two separated by more than it yield two. At the 400 ms default that means a pair at ~300 ms is coalesced and a pair at ~500 ms is not — an implementation with a 200 ms floor passes every other clause of this case and fails here. **The suppressed press is discarded, not deferred** (`CTRL-20`): after the coalesced pair, the control is left at rest for 2 s and **no second event appears** at any point | `CTRL-18`, `CTRL-19`, `CTRL-20` | Req | Req |
 | `VAL-FUNC-14` | RX loss creates no camera-control transition | `RCV-01` | Req | Req |
 | `VAL-FUNC-15` | `ARMING_DISABLED_RX_FAILSAFE` guard asserts during real RX loss and `BOXFAILSAFE` while FC is armed | `RCV-02` | Req | n/a |
 | `VAL-FUNC-16` | Startup qualification: no camera-control transition of any kind before qualification completes; the first qualified sample reconciles a level control and emits no edge | `RCV-08`, `RCV-14`, `RCV-17` | Req | Req |
@@ -45,7 +45,7 @@ still passes its gate. **One authoritative home, and it is not this document** (
 | `VAL-FUNC-21` | Betaflight fallback: with `MSP_FAILSAFE_CONFIG` denied, the bridge qualifies on condition A only and never on a timer | `RCV-11`, `RCV-13` | Req | n/a |
 | `VAL-FUNC-22` | INAV startup, no-receiver case: with the transmitter off, `ARMING_DISABLED_RC_LINK` reads asserted and no spurious record occurs for a control range spanning `midrc` | `RCV-17` | n/a | Req |
 | `VAL-FUNC-23` | INAV qualification stops reading `armingFlags` once qualified, and once any maintenance window has closed — no runtime arm-state poll thereafter | `RCV-17`, `MSP-02`, `MSP-03` | n/a | Req |
-| `VAL-FUNC-24` | Guarded commit: a transition-bearing RC sample is committed only under a passing `STATUS₁ → RC → STATUS₂` bracket; a failed bracket discards the candidate. **`RCV-04`'s optimisation is verified from the same MSP capture and in both directions:** polls whose sample implies no transition carry **two** transactions and issue no `STATUS₂`, and polls whose sample implies one carry **three**. Counting only the three-transaction case would pass an implementation that brackets every poll — permitted, but not what `RCV-04` describes, and it is the budget `MSP-08` later trades against | `RCV-03`, `RCV-04` | Req | n/a |
+| `VAL-FUNC-24` | Guarded commit: a transition-bearing RC sample is committed only under a passing `STATUS₁ → RC → STATUS₂` bracket; a failed bracket discards the candidate. **`RCV-04` is a permitted optimisation and this case does not require it.** From the same MSP capture, classify the implementation once: either every poll carries three transactions (bracket-always), or polls whose sample implies no transition carry **two** and issue no `STATUS₂` while transition-bearing polls carry **three**. **Both pass.** What fails is a third pattern — a transition-bearing poll carrying only two — which is `RCV-03` violated under `RCV-04`'s cover. Record which of the two the build uses, because `MSP-08`'s budget argument assumes the optimised one | `RCV-03`, `RCV-04` | Req | n/a |
 | `VAL-FUNC-25` | Recovery latency: guard clear is awaited rather than timed; level control reconciles after both TX-off recovery and `BOXFAILSAFE` revert, whatever the two latencies are | `RCV-05`, `RCV-06`, `RCV-07` | Req | n/a |
 | `VAL-FUNC-26` | `Combi` arbitration matches the `CTRL-06` truth table, including override clearing when the level control leaves its range. **Run additionally with a Combi button mapped to a non-stop action** (photo capture): it fires on each press, sets no `manualStop`, and the Record level control's intent is unaffected throughout — **a stateless button that silently joined the arbitration would suppress recording on a photo press**, and nothing else in this suite would show it | `CTRL-06`, `CTRL-07`, `CTRL-10` | Req | Req |
 | `VAL-FUNC-27` | Range evaluator: ±10 µs hysteresis observed; sub-40 µs range rejected at setup; **no behaviour depends on a single-microsecond boundary** — a channel parked exactly on a boundary produces a stable verdict, not chatter. **`CTRL-17` is checked at the store, not at the evaluator:** after the control has been driven repeatedly across both thresholds, the persisted range is re-read and is **byte-identical to what the user entered** — hysteresis has not been folded into it. A widened stored range evaluates correctly and fails silently the moment the hysteresis default changes | `CTRL-15`, `CTRL-16`, `CTRL-17`, `CTRL-14` | Req | Req |
@@ -75,7 +75,7 @@ still passes its gate. **One authoritative home, and it is not this document** (
 | `VAL-FUNC-51` | A learning acquisition left open expires at 15 s, returns to idle, writes no configuration and reverts the poll rate | `LEARN-17`, `LEARN-04` | Req | Req |
 | `VAL-FUNC-52` | Learning thresholds are not `CTRL-15`'s: a mapping learned at these thresholds and the same mapping entered by hand evaluate identically at runtime under ±10 µs hysteresis | `LEARN-06`, `LEARN-12`, `CTRL-15` | Req | Req |
 | `VAL-FUNC-53` | Trigger learning is available in `SETUP` with no camera present and no BLE initialised — it does not depend on the peak-2 gate | `LEARN-02`, `RES-07` | Req | Req |
-| `VAL-FUNC-54` | Resource floors: each mode meets ≥ 32 KiB free and ≥ 16 KiB largest allocatable block under its specified workload, and neither figure degrades monotonically across repeated operations — `RUN` over ≥ 30 min and ≥ 10 reconnect cycles | `RES-01`…`RES-05` | Req | Req |
+| `VAL-FUNC-54` | Resource floors: each mode meets ≥ 32 KiB free and ≥ 16 KiB largest allocatable block under its specified workload, and neither figure degrades monotonically across repeated operations — `RUN` over ≥ 30 min and ≥ 10 reconnect cycles | `RES-01`, `RES-02`, `RES-03`, `RES-04`, `RES-05` | Req | Req |
 | `VAL-FUNC-55` | MSP command policy is closed: an MSP capture across a full session contains only allowlist commands, and exactly two write commands appear in the whole product — the platform's OSD injection command and nothing else | `SAFE-02`, `SAFE-03`, `SAFE-04` | Req | Req |
 | `VAL-FUNC-56` | `MSP_RTC` is resolved per platform — 247 on Betaflight, 246 on INAV — and no shared constant is used; an MSP capture shows no `MSP_SET_RTC` on either platform | `SAFE-05` | Req | Req |
 | `VAL-FUNC-57` | `MSP_RC` is polled at 20 Hz for the duration of a learning operation regardless of configured control modes, and reverts afterwards; a 250 ms momentary demonstration is characterised, not missed | `LEARN-04`, `MSP-01` | Req | Req |
@@ -180,7 +180,7 @@ test on hardware. Each still names its verification.
 | `VAL-REV-04` | Scope review: no acceptance claim in this document references an ELRS-integrated build | `ARCH-05`, `SCOPE-08` |
 | `VAL-REV-05` | **Documentation review.** The documentation set states: the control source is the FC-effective AUX value; the Push Button freeze limitation; the no-arm-switch exception **with the correct platform attribution**; the save-with-live-camera-text note; and that Setup Mode and firmware update are not to be entered while the aircraft is being operated | `CTRL-24`, `CTRL-22`, `INST-04`, `INST-05`, `SETUP-26`, `UPD-03`, `RCV-19` |
 | `VAL-REV-06` | Installation review: four solder joints and one spare UART; default 115200; no CLI required for the default supported configuration; learning is the primary route and manual entry the fallback. **Documentation states the measured peak current draw — not only the average — and the required local bulk capacitance** (`FC-02`), and the brownout/reset behaviour is stated | `INST-01`, `INST-02`, `INST-03`, `FC-01`, `FC-02` |
-| `VAL-REV-07` | Product-level acceptance: the bridge controls the camera over BLE, reads actual reported state, displays it through the FC OSD, works independently of the video system, needs only power and one UART, and requires no interaction in normal use. **`PROD-03` is gated, not re-tested:** the review shall confirm that `VAL-FAIL-01`, `VAL-FAIL-02`, `VAL-FAIL-14`, `VAL-FAIL-25`, `VAL-FAIL-29` and `VAL-FAIL-33` (`SAFE-06`) and `VAL-SPIKE-02` (`RF-05`) have all passed on the release build. **A failure in any of them is a `PROD-03` failure**, and the product claim is not made | `PROD-01`, `PROD-02`, `PROD-03` |
+| `VAL-REV-07` | Product-level acceptance: the bridge controls the camera over BLE, reads actual reported state, displays it through the FC OSD, works independently of the video system, needs only power and one UART, and requires no interaction in normal use. **`PROD-03` is gated, not re-tested, and the gate names all three of its members.** The review shall confirm that the following passed on the release build: **bridge failure** — `VAL-FAIL-01`, `VAL-FAIL-02`, `VAL-FAIL-14`, `VAL-FAIL-33`; **camera failure** — `VAL-FAIL-25`, `VAL-FAIL-29`; **Bluetooth-link failure** — `VAL-FAIL-26` and `VAL-FAIL-27`, the second carrying the no-measurable-RF-degradation criterion; and **control-link margin** — `VAL-SPIKE-02` (`RF-05`). **A failure in any of them is a `PROD-03` failure**, and the product claim is not made. The BLE-link member is not reachable through `SAFE-06`, which enumerates bridge and camera faults and not link loss (v1.6, CR-41) | `PROD-01`, `PROD-02`, `PROD-03` |
 | `VAL-REV-08` | Camera-policy review: the Nano is not advertised above **Unsupported** until `VAL-SPIKE-04` passes; no EULA-encumbered protocol document is redistributed; no model is promoted to Verified on protocol similarity alone; **every camera support claim names the bridge firmware version it was tested at**, and the Open GoPro supported-model list is re-read per release rather than assumed forward (`PF-EXT-01`). **`Verified` is reached only through the full camera-driver qualification suite on physical hardware at a stated firmware version, never from a protocol probe**; the suite applied is the same one for every claimed driver | `CAM-08`, `CAM-11`, `CAM-12`, `UPD-04` |
 | `VAL-REV-09` | Design review: the recorded reduction lever under MSP budget pressure is the Push Button poll rate, **never** the validity bracket; the fallback stops at **10 Hz** and a target that cannot meet `CTRL-18`/`CTRL-23` there **offers no Push Button control at all** rather than a lossy one | `MSP-08`, `CTRL-21` |
 | `VAL-REV-10` | Source review: no code path binds a functional FC mode as a generic camera trigger, and no `MSP_SET_*` command appears in the built image outside the two permitted OSD writes | `CTRL-28`, `SAFE-02`, `SAFE-04` |
@@ -280,7 +280,7 @@ Seven spikes, each with pass criteria. Whether stock INAV 8 can accept runtime c
 OSD Elements is already answered in source (`PF-INAV-13`); `VAL-SPIKE-01` confirms it on hardware.
 
 ### `VAL-SPIKE-01` — FC interface, control input and OSD injection on hardware
-*Confirms `FC-*`, `CTRL-*`, `RCV-*`, `OSD-*` on real flight controllers.*
+**Verifies:** `FC-05`, `FC-07`, `FC-08`, `FC-13`, `CTRL-02`, `CTRL-04`, `CTRL-06`, `CTRL-08`, `CTRL-12`, `CTRL-15`, `CTRL-16`, `CTRL-18`, `CTRL-19`, `CTRL-20`, `CTRL-29`, `RCV-02`, `RCV-03`, `RCV-05`, `RCV-06`, `RCV-07`, `RCV-08`, `RCV-15`, `RCV-16`, `RCV-17`, `RCV-19`, `CAM-04`, `OSD-02`, `OSD-07`, `OSD-08`, `OSD-09`, `OSD-10`, `OSD-13`, `OSD-14`, `OSD-15`, `OSD-18`, `SAFE-07`, `SCOPE-01`, `SCOPE-02`
 
 1. `MSP_RC` returns live AUX values while armed on both platforms, matching the FC Receiver tab for
    configured AUX channels. *(`CTRL-12`)*
@@ -293,8 +293,8 @@ OSD Elements is already answered in source (`PF-INAV-13`); `VAL-SPIKE-01` confir
    modifying FC mode, USER or PINIO configuration. *(`CTRL-02`)*
 4. A 250 ms Push Button press is detected reliably; a 100 ms press is either detected or ignored but never
    double-fired. **Two qualifying presses closer together than `CTRL-20`'s minimum produce one event and two
-   further apart produce two** — the interval is measured on hardware here, not assumed from the absence of
-   double-firing. *(`CTRL-18`…`CTRL-20`)*
+   further apart produce two, and the suppressed press never appears later** — the interval is measured on
+   hardware here, not assumed from the absence of double-firing. *(`CTRL-18`, `CTRL-19`, `CTRL-20`)*
 5. **Betaflight guard — assert.** `ARMING_DISABLED_RX_FAILSAFE` asserts during real RX loss while armed and
    during `BOXFAILSAFE`-induced invalid data; `RX_FAILSAFE_MODE_SET` on the camera AUX produces no
    camera-control transition. *(The flag's validity while armed is established in source, `PF-BF-09`, so
@@ -391,6 +391,8 @@ OSD Elements is already answered in source (`PF-INAV-13`); `VAL-SPIKE-01` confir
 
 ### `VAL-SPIKE-02` — RF coexistence: the `RF-05` release gate
 
+**Verifies:** `RF-05`, `RF-03`, `RF-07`, `RF-08`
+
 Measure the bridge's effect on a 2.4 GHz ELRS control link.
 
 **Two instruments, two jobs.** The existing passive RF survey and Blackbox analysis tooling slices noise
@@ -453,6 +455,8 @@ gate needs to exclude, the correct outcome is to improve the rig, not to widen t
 
 ### `VAL-SPIKE-03` — Camera protocol re-host: GoPro, V1
 
+**Verifies:** `SCOPE-03`, `CAM-02`, `CAM-03`
+
 Port Open GoPro onto NimBLE-Arduino on ESP32-C3, behind the `CAM-01` driver interface.
 
 **Pass criteria.**
@@ -476,6 +480,8 @@ Port Open GoPro onto NimBLE-Arduino on ESP32-C3, behind the `CAM-01` driver inte
    release that adds the second driver.
 
 ### `VAL-SPIKE-04` — Osmo Nano protocol probe: gates V1.1 only
+
+**Verifies:** `CAM-08`, `CAM-10`, `CAM-11`, `SCOPE-04`
 
 Independent of V1 and of the other spikes; may run immediately, and hardware is on hand. The purpose is to
 answer one question cheaply — *does the Osmo Nano answer DUML at all?* — before any driver is written.
@@ -507,6 +513,8 @@ promoting the model on protocol similarity alone, and **the whole premise of the
 argument.**
 
 ### `VAL-SPIKE-05` — Retained boot request and reset-reason gate: gates `BOOT-*`
+
+**Verifies:** `BOOT-03`, `BOOT-05`, `BOOT-07`
 
 The cheapest spike, and **the one to run first**: `BOOT-03`'s entire failure story rests on two toolchain
 behaviours, and neither should be assumed from documentation written against a different ESP-IDF release
@@ -544,6 +552,8 @@ why it is the fallback and not the design.
 
 ### `VAL-SPIKE-06` — Primary-stick maintenance gesture: gates nothing in V1
 
+**Verifies:** `SCOPE-08`, `SETUP-01`
+
 `DIAG` and `SETUP` are reachable without this, so the spike exists only to decide whether a stick-based
 no-touch entry could ever be added safely. **It has an explicit kill branch, and the expected outcome is
 that it is not worth it.**
@@ -576,6 +586,8 @@ Whatever the outcome, **the AUX gesture remains the specified no-touch route.** 
 one setup field at the cost of the entire audit above, which is why it is not in V1 (`SCOPE-08`).
 
 ### `VAL-SPIKE-07` — Discovery dwell: closes the `PAIR-12` parameter
+
+**Verifies:** `PAIR-12`, `PAIR-11`, `PAIR-03`, `REL-02`
 
 **What is being measured is the camera, not the bridge:** the longest interval a supported camera in its
 pairable state may go without emitting an advertisement the bridge can classify. The dwell is that interval

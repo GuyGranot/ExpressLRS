@@ -1,28 +1,28 @@
 # Action Camera Bridge — Product Requirements Specification
 
-**Status:** **v1.5 — audited baseline, 2026-08-27.** 247 requirements, 203 validation cases, 38 platform
-facts, 403 case↔requirement relations.
+**Status:** **v1.6 — audited baseline, 2026-08-27.** 247 requirements, 203 validation cases, 38 platform
+facts, **464 case↔requirement relations** under the unit defined in Ledger §4b.
 
-**Audit status is stated per audit, because it differs per audit.** The v1.3 header claimed *"seven audits
-re-run … all clean"* when four had run; the v1.4 header called audit 6 complete when it had read 27 % of its
-relations (CR-26, CR-38).
+**Audit status is stated per audit, because it differs per audit.** v1.3 claimed seven audits re-run when
+four had run; v1.4 called audit 6 complete on 27 % of its relations; v1.5 reported a relation total produced
+by an undefined counting unit (CR-26, CR-38, CR-45).
 
-| Audit | State at v1.5 |
+| Audit | State at v1.6 |
 | --- | --- |
 | 1 · requirement-equivalence | **historical.** Scoped to the compression boundary, a past event; not re-runnable, and §1's dispositions are the record |
 | 2 · reverse | **historical**, same scope |
-| 3 · boundary-value | **re-run, clean.** Covers closed enumerations since v1.4 (CR-30) and `FC-12`'s constant since v1.5 |
-| 4 · traceability | **re-run, clean** |
-| 5 · conformance-input | **re-run, clean. 139/139 — no input is absent or Evidence-only**, for the first time since this audit existed (CR-24, CR-37) |
-| 6 · validation-entailment | **complete for the first time: all 403 relations read**, not the 110 a lexical screen selected. The screen is retired as a selector (CR-38) |
-| 7 · internal-consistency | **re-run, clean.** Skipped in v1.3, which is why `PAIR-11`'s equality collision reached a published baseline (CR-27) |
+| 3 · boundary-value | **re-run, clean** |
+| 4 · traceability | **re-run; one open item, CR-44** — `CTRL-13` is platform-dependent and carries no platform fact. Everything else chains |
+| 5 · conformance-input | **re-run, clean. 139/139** — no input absent or Evidence-only (CR-24, CR-37) |
+| 6 · validation-entailment | **re-run over a defined edge set for the first time: all 464 relations read, 0 defects.** v1.5's 403 was a token count that missed a range and every spike (CR-45) |
+| 7 · internal-consistency | **re-run, clean**, including the `CTRL-18`…`CTRL-23` ↔ `MSP-08` ↔ `LEARN-04`/`LEARN-06` cluster re-derived from first principles (CR-42) |
 
-**Open: CR-11 only, by decision.** CR-24 closed in v1.5 against Betaflight `2025.12.5` source.
+**Open: CR-44** (above) and **CR-11** by decision.
 
-**What "complete" claims, and what it does not.** Every relation was read; one of the 110 read in v1.4 was
-misjudged on a careful pass. The honest estimate is that a few of the 403 are still wrong and nobody knows
-which. **The claim here is that the header matches the evidence beneath it**, not that the artifacts are
-correct.
+**What this claims, and what it does not.** Every relation was read and none failed — a stronger result than
+any earlier delta, and still one careful pass by one reader. v1.5 read 110 relations carefully and misjudged
+one. **The counts are now reproducible and their membership published; that makes them checkable, not
+right.**
 
 **This is not frozen, and the last two deltas are why.** v1.2 was declared frozen and did not survive review;
 v1.3 replaced the freeze with a claim of completeness that did not survive it either. **A baseline is
@@ -31,8 +31,9 @@ Subsequent findings — including Osmo Nano / DUML results — land as a new del
 **Historical ledger blocks are not edited in place; measured blocks are regenerated at every delta** (§5d).
 Compressed from PRS v1.0 (`action-camera-bridge-prs-source-v1.0.md`,
 sha256 `e6178686acfa71e932784cf44041a988f9d72e8ff64162c89588bce8a700b473`) under the compression rule
-of 2026-08-26, **plus the separately reviewed v1.1, v1.2, v1.3, v1.4 and v1.5 deltas recorded in
-Traceability Ledger §5a–§5f.** **No requirement change was intended at the compression boundary; seven
+of 2026-08-26, **plus the separately reviewed v1.1, v1.2, v1.3, v1.4, v1.5 and v1.6 deltas, recorded in
+Traceability Ledger §5a, §5b, §5c, §5e, §5f and §5g respectively.** *(§5d is the freeze rule, not a delta —
+which is why the range shorthand this replaced was wrong.)* **No requirement change was intended at the compression boundary; seven
 source obligations were nevertheless lost there** (Ledger §6, which records the acceptance criterion as
 NOT MET). The deltas since have changed requirements deliberately, and each change is itemised. Every
 disposition is recorded in the Ledger.
@@ -432,6 +433,13 @@ user.
 
 **CTRL-20.** Consecutive Push Button events shall be separated by a minimum interval, **default
 400 ms**, so a single press cannot double-toggle.
+
+**A qualifying press occurring inside that interval is *discarded*. It shall not be queued, deferred or
+re-emitted when the interval expires.** Spacing alone did not say this, and deferral satisfies the letter of
+it: the events would still be 400 ms apart. But a deferred press is **a second toggle arriving late**, which
+is the outcome the interval exists to prevent, delivered at a moment the pilot has stopped associating with
+their own input. Suppression and postponement are opposite behaviours and only one of them is intended
+(v1.6, CR-40).
 
 **CTRL-21.** When any Push Button control is enabled, `MSP_RC` shall be polled at **20 Hz** rather than
 10 Hz (`MSP-01`), subject to the `MSP-08` fallback and its floor.
@@ -1098,7 +1106,7 @@ allowed. Without this rule, an aircraft that arms and disarms inside the window 
 two implementations would resolve differently.
 
 **SETUP-11.** **Sequence, never static state.** A static AUX position present at startup shall never be
-be recognised as a gesture. **Only qualified samples shall count toward recognition.**
+recognised as a gesture. **Only qualified samples shall count toward recognition.**
 
 **SETUP-12 — the recogniser.**
 
@@ -1239,9 +1247,27 @@ argument that justifies the steady-state fallback does not apply to it.
 
 **A target that cannot reach 20 Hz even for that bounded window shall not offer Push Button controls and
 shall not propose them** — which is `MSP-08`'s existing consequence, reached by the other route. It shall
-not instead learn at 10 Hz: a 250 ms momentary demonstration spans two samples at 20 Hz and may span one at
-10 Hz, so learning at the fallback rate would characterise a Push Button control as a Level control and
-store a mapping that never fires. **Silently mis-learning is worse than declining** (v1.4, CR-27).
+not instead learn at 10 Hz, and the reason is a sample count rather than a hold time:
+
+```
+LEARN-06 needs 5 qualified samples   median of 5, and max−min ≤ 20 µs over 5
+250 ms at 20 Hz   →  5 samples       (4 × 50 ms + adverse phase = 250 ms)
+250 ms at 10 Hz   →  2 samples       (200 ms buys two; five would need 500 ms)
+```
+
+**`CTRL-18`'s runtime predicate and `LEARN-06`'s characterisation predicate need different numbers of
+observations, and only the first survives the fallback.** At 10 Hz a 250 ms demonstration is detectable as a
+press and **not** characterisable as a stable position, so learning at the fallback rate would reject a
+perfectly good momentary control as *unstable*, or propose a range from two samples. **Silently mis-learning
+is worse than declining** (v1.4, CR-27; arithmetic corrected v1.6, CR-42).
+
+**`CTRL-19`'s 250 ms and `LEARN-06`'s five samples meet with no margin at all**, and that is recorded rather
+than adjusted. 250 ms is exactly `5 × 50 ms`, so a hold of precisely the documented minimum yields five
+samples under any phase and **a hold of 240 ms yields four**. The consequence is benign — `LEARN-07` reports
+*unstable* and asks the user to hold the position, which is true and actionable — so neither number moves.
+**What this note exists to prevent is a later change made in ignorance of the coupling:** lowering the
+learning rate, raising the stability window, or trimming the documented hold each breaks a predicate that
+lives in a different requirement from the number being changed (v1.6, audit 7).
 
 **LEARN-05 — camera actuation is suspended during learning.** Qualified samples continue to feed the
 learner and the diagnostic display but **shall not produce camera commands**, and runtime control state
@@ -1566,8 +1592,10 @@ requirement; the 20 Hz rate is a latency preference. The permitted range is clos
 
 ```
 20 Hz    CTRL-21's normal rate wherever a Push Button control is enabled
-10 Hz    permitted fallback. CTRL-19's documented 250 ms hold remains satisfiable,
-         because CTRL-18's two consecutive samples span 200 ms at this rate
+10 Hz    permitted fallback. CTRL-19's documented 250 ms hold remains satisfiable:
+         under adverse phase two consecutive samples need 200 ms at this rate,
+         and the documented hold is 250 ms, so CTRL-18's two observations are
+         guaranteed rather than merely likely
 < 10 Hz  prohibited
 ```
 

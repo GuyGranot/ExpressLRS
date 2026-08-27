@@ -23,13 +23,13 @@ which failed at the boundary and cannot be satisfied retroactively (§6).
 
 | Document | Words | Role |
 | --- | --- | --- |
-| PRS | 16,711 | the normative reading path |
+| PRS | 17,051 | the normative reading path |
 | Platform Evidence | 7,390 | why each requirement is correct at the pinned tags |
-| Validation | 12,462 | how conformity is demonstrated |
-| Ledger (this file) | 17,304 | audit record |
-| Compression Rule | 3,895 | the method, amended by CR-01, audits 5b/6/7, and CR-23/24 |
+| Validation | 12,630 | how conformity is demonstrated |
+| Ledger (this file) | 20,085 | audit record |
+| Compression Rule | 4,268 | the method, amended by CR-01, audits 5b/6/7, and CR-23/24 |
 
-*(Word counts are **regenerated 2026-08-27** and are post-v1.5. At the compression boundary the PRS was
+*(Word counts are **regenerated 2026-08-27** and are post-v1.6. At the compression boundary the PRS was
 12,207 and Validation 9,377; after v1.1, 12,910 and 9,963; after v1.2, 15,413 and 11,022; after v1.3, 15,884
 and 11,615. The v1.2 freeze published four of these figures stale — this table is a measured block and is
 regenerated at every delta, §5d.)*
@@ -296,7 +296,7 @@ Every numeric value, threshold, count and boundary in the PRS, with the requirem
 | 250 ms documented minimum hold | `CTRL-19` | timing |
 | 400 ms default event separation | `CTRL-20` | timing |
 | 10 Hz / 20 Hz poll rates | `CTRL-21`, `MSP-01` | rate |
-| 10 Hz floor; < 10 Hz prohibited; 200 ms two-sample span at 10 Hz | `MSP-08` | threshold |
+| 10 Hz floor; < 10 Hz prohibited; two consecutive samples need **200 ms under adverse phase** at 10 Hz, against `CTRL-19`'s 250 ms hold | `MSP-08` | threshold |
 | 100 ms OSD state-change latency | `OSD-18` | timing |
 | 1000 / 1500 / 2000 µs — explicitly **not** assumable | `LEARN-08` | negative bound |
 | channels 1–4 excluded | `CTRL-12` | scope |
@@ -393,20 +393,23 @@ against the previous regeneration.**
 Mechanically verified over the whole set. **Figures below are post-delta**; the parenthesised value is the
 figure at the compression boundary, before §5a.
 
-**Regenerated 2026-08-27 against the v1.5 artifacts.**
+**Regenerated 2026-08-27 against the v1.6 artifacts.**
 
 ```
 requirements defined          247     (229 at the boundary · 234 after v1.1 · 246 after v1.2 ·
-                                       247 after v1.3; v1.4 and v1.5 amended and added none)
+                                       247 after v1.3; v1.4, v1.5 and v1.6 amended, added none)
 duplicate definitions           0
 gaps in ID numbering            0
 dangling requirement refs       0     (all five artifacts)
 deontic statements in Evidence 12     (audit 5b: 0 new obligations)
 platform facts defined         38     (PF-BF-22 added in v1.5, closing CR-24)
+platform-dependent reqs with
+  no platform fact                1     CTRL-13 — CR-44, OPEN
 dangling platform-fact refs     0
 unreferenced platform facts     0
 validation cases              203     (124 FUNC · 59 FAIL · 13 REV · 7 SPIKE)
-case->requirement relations   403     (all read semantically in v1.5, CR-38)
+case->requirement relations   464     (406 table-case + 58 spike, one explicit pair each;
+                                       all read semantically in v1.6, 0 defects — CR-45)
 validation cases with no requirement    0
 requirements with no validation case    0
 undelegated vague terms in the PRS      0
@@ -421,7 +424,8 @@ The requirement↔test relation is **many-to-many by design**: `VAL-FUNC-49` ver
 `LEARN-06`, and `RCV-08` is verified by seven cases. The audit asserts non-emptiness in both directions,
 not a bijection.
 
-**Platform-dependent requirements** each carry at least one `PF-*` reference at the pinned baseline:
+**Platform-dependent requirements** each carry at least one `PF-*` reference at the pinned baseline —
+**with one exception, `CTRL-13`, recorded as CR-44 and open.** The list below is the set that does:
 `FC-05`…`FC-07`, `CTRL-14`…`CTRL-16`, `CTRL-24`, `CTRL-26`, `CTRL-27`, `RCV-02`…`RCV-19`, `OSD-01`,
 `OSD-07`…`OSD-09`, `SAFE-05`, `SAFE-07`, `SETUP-18`, `SETUP-19`, `INST-05`, `CAM-10`…`CAM-12`, **`FC-12`**
 (added v1.5 — it had been platform-dependent with no platform fact behind it, which is what CR-24 was).
@@ -507,19 +511,30 @@ why `OSD-08` fixes 28 bytes — and neither is consumed by the bridge.
 additional semantic fact from Evidence?* — is now yes for all 139 inputs**, for the first time since this
 audit was written. Evidence carries citations, derivations and rationale, and originates nothing.
 
-**The exception is not an Evidence-only input; it is absent from both documents.** `FC-12` requires an
-`MSP_BOXIDS` lookup *"to locate the ARM box bit"* on Betaflight, and locating it means matching ARM's
-**permanent box ID** — a Betaflight constant that appears in neither the PRS nor Evidence. An implementer
-must currently retrieve it from Betaflight source unaided. **This is the first `absent from both` result any
-audit here has produced**, and it was produced by re-enumerating rather than by carrying a total forward,
-which is the argument for CR-23's rule. Left `OPEN` as CR-24 rather than filled in, because the value has
-not been read at the pinned tag and a guessed platform constant is worse than a recorded gap.
-
 ---
 
 ## 4b. Validation-entailment audit *(audit 6, added after external review)*
 
-Run over all **202** validation cases in both directions.
+Run over all **203** validation cases in both directions.
+
+**What one relation is** *(defined v1.6, CR-45 — it had never been defined)*. **One relation is one explicit
+`(validation-case ID, requirement ID)` pair.** It is enumerated from two places and nowhere else: the
+`Verifies` cell of a table case, and the `**Verifies:**` line of a spike. **No shorthand is permitted in
+either** — no `X-01`…`X-05` range, no `X-*` wildcard — and the counting script **refuses to produce a number**
+if it finds one, rather than counting the shorthand as the two IDs it mentions.
+
+```
+current, regenerated 2026-08-27 from the artifacts
+
+  table-case relations        406      196 cases
+  spike relations              58        7 cases
+                             ────
+  total                       464      203 cases; every case carries at least one
+```
+
+**Every earlier figure in this section is a dated historical snapshot and not a current measurement.** They
+were produced by a token count that read `RES-01`…`RES-05` as two relations rather than five and omitted the
+spikes entirely, so they are not comparable to the total above and are not made comparable by arithmetic.
 
 **Regenerated 2026-08-27 (CR-23).** The figures below are the v1.2 run plus the v1.3 re-run; the v1.2 run
 covered the reverse leg by reading cases rather than by any mechanical screen, which is how three further
@@ -539,21 +554,32 @@ v1.3 re-run
            of which repaired incompletely        2   both re-opened in v1.4 (CR-32)
 ```
 
-**v1.4 read every *flagged* pair. v1.5 read every *relation*, and the distinction was not academic**
-(CR-38). The method requires each cited relation to be semantically checked and separately states that a
-lexical screen *"does not perform the audit"* — from which it follows that the screen may order the reading
-but cannot choose what gets read. v1.4 read the 110 the screen selected and reported the audit complete.
+**v1.4 read every *flagged* pair. v1.5 read every *token-counted relation*. v1.6 is the first run over a
+defined edge set** (CR-38, CR-45). The method requires each cited relation to be semantically checked and
+separately states that a lexical screen *"does not perform the audit"* — from which it follows that the
+screen may order the reading but cannot choose what gets read. v1.4 read the 110 the screen selected and
+reported the audit complete.
 
 ```
-v1.4   relations at the time                   414
-       flagged by the screen                   110   all read
-       reported complete                       yes   on 27 % of the relations
+historical snapshots — not current measurements
 
-v1.5   relations, counted from the artifacts   403   404 before the repairs below
-       read semantically                       403   the screen is not used to select
-       citations dropped as decorative           3
-       cases extended instead of dropped         3   where the requirement's only case was the weak one
-       already-read pairs re-read              110   one of which v1.4 had misjudged
+v1.4   relations as then counted                414
+       flagged by the screen                    110   all read
+       reported complete                        yes   on 27 % of them
+
+v1.5   relations as then counted                403   token count; ranges unexpanded,
+                                                      spikes not covered at all
+       read semantically                        403
+       citations dropped as decorative            3
+       cases extended instead of dropped          3
+
+current — v1.6, against the canonical edge set
+
+       table-case relations                     406   +3: RES-02..04, hidden inside a range
+       spike relations                           58   new: spikes now carry Verifies lists
+       total                                    464
+       read semantically in v1.6                464   the 406 re-derived, the 58 read for the first time
+       defects found                              0
 ```
 
 **Five defects survived v1.4, and four of them were in relations the screen never flagged** — high lexical
@@ -567,12 +593,19 @@ claim. **So the reading has a false-negative rate too — one known instance in 
 meant re-reading the 110, not only the 293.** A count of relations read is a stronger claim than a count of
 relations flagged, and still not a proof.
 
-**A scope correction carried forward:** v1.3 reported *"413 pairs over all 202 cases"*. The screen reads
-table rows, and the spikes are prose sections with no row — so it never covered them. The spikes are read
-directly, and the relation counts above are of table rows.
+**The spikes were outside every count until v1.6, and outside the audit with them.** They are prose
+sections rather than table rows, so nothing enumerated their citations; v1.5's claim that they were "read
+directly" was true of their text and produced no edges anyone could check. Each now carries an explicit
+`**Verifies:**` line — for three of them the union of their own per-item annotations, for the other four
+written for the first time — and their 58 edges are inside the total, the reading and the audit.
+
+**All 58 hold.** `VAL-SPIKE-01`'s list is the largest at 38 and is the one most at risk of being a topic
+list rather than a coverage claim; every entry traces to one of its 22 numbered pass criteria, including the
+two easiest to dismiss — `SCOPE-01` and `SCOPE-02` are falsified by item 22, which forbids substituting a
+forward-compatibility run on a newer build for the pinned-baseline run.
 
 **The screen is retired as a selector and kept only as an ordering heuristic.** It scored lexical overlap
-between a case's prose and each cited requirement's prose. Measured against the completed read, it flagged
+between a case's prose and each cited requirement's prose. Measured against v1.5's completed read, it flagged
 110 relations containing 1 of the 5 remaining defects, and left 293 containing the other 4 — **worse than
 indifferent as a selector, because it also made the unflagged 293 feel accounted for.**
 `VAL-FUNC-01`/`FC-03` scores zero overlap and is perfectly entailed; `VAL-REV-04`/`SCOPE-08` was flagged only
@@ -648,6 +681,7 @@ and the first was found by an external reviewer rather than by the audit whose e
 | --- | --- | --- | --- |
 | A | `PAIR-11` completes when the `PAIR-12` dwell elapses; `PAIR-05`'s `SCAN_TIMEOUT` fires when the `PAIR-03` bound is reached without completing. **`PAIR-12`'s interim value is that same bound**, so at 30 s both apply | v1.3 | `PAIR-11` precedence clause; `SCAN_TIMEOUT` recorded as unreachable while the parameter is open, and `VAL-FUNC-42`'s discovery half gated on its closure (CR-27) |
 | B | `LEARN-04` requires 20 Hz polling during learning *"regardless of the currently configured control modes"*; `MSP-08` declares a **closed** permitted range with a 10 Hz fallback and states the Push Button rate is what gives way | v1.2 | `LEARN-04` scoped against the fallback, and a target that cannot reach 20 Hz declines Push Button controls rather than mis-learning them at 10 Hz (CR-27) |
+| B′ | **B's repair was justified by wrong arithmetic.** v1.4 argued a 250 ms demonstration *"spans two samples at 20 Hz and may span one at 10 Hz"* — both figures wrong, and the second contradicts `MSP-08`, which correctly states two samples need 200 ms at 10 Hz. The policy was right and its stated reason was not | v1.4 | `LEARN-04` rewritten around sample counts: 250 ms buys **5** samples at 20 Hz and **2** at 10 Hz, against `LEARN-06`'s five-sample stability predicate (CR-42) |
 | C | OSD-write suppression stated in **three** places at three different scopes — `OSD-19`'s three exhaustive terms, `MSP-06`'s telemetry-disabled clause, `FC-08`'s table column — against `OSD-19`'s own claim to be *"the single place that resolves"* it and §0's no-duplication rule | v1.3 | `MSP-06` and `FC-08` defer to `OSD-19`; the rule now has one home (CR-29) |
 
 **B is the one worth dwelling on.** A and C are visible from a single requirement's wording. B is only visible
@@ -655,6 +689,37 @@ by holding two requirements in mind that sit 300 lines apart, share no vocabular
 different reasons — and its failure mode is silent: a Push Button control learned at the fallback rate is
 stored as a Level control and never fires. **That is what a within-document audit is for**, and it is why
 "the document changed but the audit is expensive" is never the trade-off it appears to be.
+
+**B′ is the sharper lesson, and v1.4's clean audit-7 result is what made it possible.** The contradiction was
+repaired and the repair's *justification* was arithmetic nobody re-derived — so audit 7 passed on a cluster
+whose stated reasoning was false, because the audit compares requirements to each other and a wrong reason
+for a right rule contradicts nothing. **A prose justification is not checked by consistency**, and where it
+contains a computation, the computation is a measured claim.
+
+### Re-run 2026-08-27 for v1.6 — the `CTRL-18`…`CTRL-23` ↔ `MSP-08` ↔ `LEARN-04`/`LEARN-06` cluster
+
+Re-derived from first principles, because that cluster is where B and B′ both lived. Samples arrive at
+`k·P + φ` with arbitrary phase `φ ∈ [0, P)`; the count guaranteed in a hold of length `T` is
+`min over φ of floor((T−φ)/P) + 1`.
+
+```
+20 Hz, P = 50 ms    T = 250 ms  →  5 samples guaranteed, 6 typical
+10 Hz, P = 100 ms   T = 250 ms  →  2 samples guaranteed, 3 typical
+10 Hz, P = 100 ms   T = 200 ms  →  2 samples guaranteed        (MSP-08's figure, correct)
+20 Hz, P = 50 ms    5 samples   →  requires T ≥ 250 ms
+10 Hz, P = 100 ms   5 samples   →  requires T ≥ 500 ms
+```
+
+**No contradiction remains in the cluster.** `CTRL-18` needs 2 and gets 2 at the fallback rate; `LEARN-06`
+needs 5 and gets 5 only at 20 Hz, which is why `LEARN-04` elevates and why the fallback is closed to
+learning. `CTRL-23` and `LEARN-06` do not interact, because `LEARN-05` emits no events during learning.
+
+**One observation, recorded rather than repaired: the margin is exactly zero.** `CTRL-19`'s documented
+250 ms is precisely `5 × 50 ms`, so the documented minimum hold is the *shortest* hold that satisfies
+`LEARN-06` — a 240 ms hold yields four samples and is reported *unstable*. That degrades honestly, so no
+number moves; it is written into `LEARN-04` so that a later change to the learning rate, the stability window
+or the documented hold cannot be made without meeting the coupling. **Three requirements share one arithmetic
+identity and none of them owned it.**
 
 ---
 
@@ -954,10 +1019,18 @@ measurable control-link degradation. Neither was exercised, and it was `PROD-03`
 
 **The repair looks like the defect this ledger removed in v1.4, and is not.** `VAL-REV-11`/`SAFE-06` was
 dropped because a coverage roll-up cannot falsify `SAFE-06`, which has behavioural content of its own.
-`PROD-03` has none: its content **is** the conjunction of `SAFE-06` and `RF-05`, both of which it cites and
-both of which have real cases. A gate over those cases therefore does falsify it — a failure in any of them
-is a `PROD-03` failure. **Stated here because the distinction is not visible from the citation graph**, and
-the next reviewer would otherwise flag the repair.
+`PROD-03` has none of its own: it is a conjunction over failure modes that other requirements test.
+
+**But the conjunction stated in v1.5 was wrong, and the error hid a coverage hole** (corrected v1.6, CR-41).
+v1.5 wrote *"its content **is** the conjunction of `SAFE-06` and `RF-05`"*. `PROD-03` names **three** failure
+modes — bridge, **Bluetooth connection**, camera — and `SAFE-06` enumerates bridge and camera faults only.
+Link loss is in neither cited requirement, so the gate as written skipped a third of what it gates.
+`VAL-FAIL-26` and `VAL-FAIL-27` now carry that member.
+
+**A gate over cases is only as complete as the enumeration behind it**, and an enumeration written as a
+conjunction of two IDs invites exactly this: the IDs look authoritative, and nobody re-reads the requirement
+to check that they cover it. **Stated here because the distinction from `VAL-REV-11` is not visible from the
+citation graph**, and the next reviewer would otherwise flag the repair as the defect it resembles.
 
 ### CR-36 — `VAL-SPIKE-07`'s and `MSP-06`'s repairs left stale references · **CLOSED in v1.5**
 
@@ -988,7 +1061,7 @@ The method requires every cited relation to be semantically checked, and separat
 the audit complete — **the third consecutive delta to report a work list as a result**, and the first to do it
 after writing the rule against it (CR-32).
 
-All 403 relations have now been read. Five defects survived v1.4; **four were in relations the screen never
+All 403 relations have now been read *(403 as counted then; the unit was undefined and the true edge count is 464 — CR-45, v1.6)*. Five defects survived v1.4; **four were in relations the screen never
 flagged**, because the citations most likely to be decorative are the ones whose subject matter matches, which
 is what produces a high overlap score. The screen is retired as a selector.
 
@@ -1004,6 +1077,104 @@ citations without breaking them.**
 
 **The rule this produces:** the reading set is every current relation. A screen may order it and may not
 select it; a delta that moves a clause re-reads both ends; and prior verdicts are re-derived, not inherited.
+
+### CR-40 — `CTRL-20` constrained spacing; two cases required suppression · **CLOSED in v1.6**
+
+`CTRL-20` said consecutive Push Button events shall be separated by 400 ms. `VAL-FUNC-13` and `VAL-SPIKE-01`
+item 4 required that two presses inside the interval yield **one** event — which is a stronger claim, and one
+the requirement did not make. **Deferring the second press satisfies the spacing rule exactly**: the two
+events would still be 400 ms apart.
+
+**The test was right and the requirement was incomplete**, which is the reverse of the usual finding and is
+why it survived: a reviewer checking whether the case is entailed by the requirement sees a plausible
+connection, and only a reviewer asking whether the requirement *admits an implementation the case rejects*
+sees the gap. `CTRL-20` now says discarded, not queued or deferred, and both cases assert the absence of a
+late second event rather than only the absence of an immediate one.
+
+**The rule this produces:** a case that constrains more than its requirement is a defect in the requirement
+until proven otherwise. Entailment runs in one direction and is checked in that direction; **admissibility
+runs in the other**, and a conforming implementation that fails a case is the symptom.
+
+### CR-41 — `PROD-03`'s gate covered two of its three failure modes · **CLOSED in v1.6**
+
+See CR-35, revised in place. `PROD-03` covers failure of the bridge, **the Bluetooth connection** and the
+camera; the v1.5 gate named `SAFE-06` cases and `VAL-SPIKE-02`, and `SAFE-06` enumerates bridge and camera
+faults only. `VAL-FAIL-26` and `VAL-FAIL-27` now carry the link-loss member.
+
+### CR-42 — a repair justified by arithmetic nobody checked · **CLOSED in v1.6**
+
+v1.4 resolved the `LEARN-04`/`MSP-08` contradiction correctly and justified it with *"a 250 ms momentary
+demonstration spans two samples at 20 Hz and may span one at 10 Hz."* **Both figures are wrong** — it is five
+and two — and the second contradicts `MSP-08` on the same page, which states correctly that two consecutive
+samples need 200 ms at 10 Hz.
+
+The policy was right for a reason nobody had written down: **`LEARN-06` needs five samples for its stable
+position predicate, and `CTRL-18` needs two.** Only the second survives the fallback rate. `LEARN-04` now
+carries the sample counts and the phase analysis.
+
+**Audit 7 passed over this twice**, and could not have caught it: it compares requirements to each other, and
+**a wrong reason for a right rule contradicts nothing.** §4c now records the arithmetic explicitly.
+
+**The rule this produces:** a justification containing a computation is a measured claim, not prose. It is
+re-derived when the block around it is regenerated, and it names the requirement whose number it depends on.
+
+### CR-43 — a case mandated a permitted optimisation · **CLOSED in v1.6**
+
+`RCV-04` explicitly permits collapsing three transactions to two where a sample implies no transition.
+v1.5's `VAL-FUNC-24` extension required the two-transaction pattern to be observed — **so a conforming
+implementation that brackets every poll would fail it**, and the case's own text said as much while
+requiring it anyway.
+
+Same shape as CR-40 and found in the same pass. The case now classifies the build into either permitted
+pattern and fails only the third: a transition-bearing poll carrying two transactions, which is `RCV-03`
+violated under `RCV-04`'s cover.
+
+### CR-44 — `CTRL-13` has no platform-evidence chain · **OPEN**
+
+`CTRL-13` requires channel count to come from the `MSP_RC` **response length** rather than a constant. That is
+a claim about what both firmwares serialize, and it carries **no `PF-*` reference** — while §4 asserts that
+every platform-dependent requirement carries at least one. It is a genuine gap in audit 4, not a citation
+style question: an implementer has no recorded basis for believing the response length tracks the FC's
+channel count.
+
+The fact to record is **one combined Betaflight/INAV platform fact** — no ID is reserved here, because a
+reserved ID reads as a citation and would dangle — covering `MSP_RC = 105` at both pinned tags, Betaflight
+serializing `rcData[0..channelCount-1]`, INAV serializing `rxGetChannelValue(0..channelCount-1)`, and the
+conclusion that response payload cardinality derives from FC channel count.
+
+**Not written here.** The serializer locations have not been read at `2025.12.5` and `8.0.1`, and §4's
+*"Unresolved platform assertions: 0"* is only true because no platform claim in Evidence lacks a file and
+line. **Adding one without them would make that figure false to close a gap in the figure next to it.**
+This is CR-24's discipline applied a second time, and CR-24 is the argument for it: waiting produced a fact
+whose *correspondence* half mattered more than the constant, and a guess would have missed it.
+
+### CR-45 — the relation count had no unit, and the spikes were outside it · **CLOSED in v1.6**
+
+Audit 6 reported 414, then 403, with no definition of what one relation was. The counter tokenised
+backticked IDs, so `RES-01`…`RES-05` counted as **two** relations rather than five, and the seven spikes —
+prose sections with no `Verifies` cell — contributed **none at all** while being described as covered.
+
+`464` replaces both: **406 table-case edges + 58 spike edges**, under a stated unit — one explicit
+`(case ID, requirement ID)` pair. The range is expanded, every spike carries a `**Verifies:**` line, and the
+counting script **refuses to emit a number** if it finds a range or wildcard rather than silently counting
+the endpoints.
+
+**This is audit 5's lesson arriving at audit 6 one delta late** (CR-31): a reported total needs a stated
+unit and enumerable membership. It was written down for conformance inputs and not applied to relations,
+because nobody asked whether the relation count had a unit — it looked like a count of visible things.
+
+### CR-46 — measured blocks mixing generations · **CLOSED in v1.6**
+
+Three places presented figures from different artifact generations as one measurement. §4a still carried a
+paragraph explaining that ARM's permanent ID was `absent from both` and `OPEN` as CR-24, immediately below
+the regenerated block reporting `139/139` and `absent from both 0`. §4b's totals mixed v1.4's 414 with
+v1.5's 403 without marking either as historical. Compression rule §6.9 computed a lesson from `110 of 414`
+and stated it against a 403-relation artifact.
+
+All three are now dated snapshots or deleted. **Historical figures belong in the change-request log, which is
+never edited; measured blocks state the current artifact and nothing else.** The failure mode is specific:
+a reader scanning a measured block cannot tell which sentences are measurements, so one stale paragraph
+makes the whole block untrustworthy rather than partly wrong.
 
 ### CR-24 — a conformance input is absent from both documents · **CLOSED in v1.5**
 
@@ -1418,6 +1589,69 @@ in 110 was misjudged on a careful pass, so the honest estimate is that a handful
 and nobody knows which. What has changed is narrower and worth having: **the claim made in the header is now
 the claim the evidence underneath supports**, and where the evidence is a judgement rather than a measurement,
 it says so.
+
+---
+
+## 5g. v1.6 audit delta — applied 2026-08-27
+
+**What triggered it.** A joint repair order from external review of the v1.5 artifacts. Three of its items
+were new technical defects, three were ledger and editorial cleanup, and one — the definition of a relation —
+turned out to invalidate a measurement v1.5 had presented as its headline result.
+
+**Every item was upheld. Two were larger than reported.** The `PROD-03` gate was missing a member *and* the
+CR that justified it stated a false conjunction; and the review's own suggested `LEARN-04` wording, while
+correct in direction, needed the phase analysis written out before the numbers could be trusted — which is
+how the zero-margin coupling between `CTRL-19`, `LEARN-04` and `LEARN-06` surfaced.
+
+| # | Change | Kind | CR |
+| --- | --- | --- | --- |
+| 1 | `CTRL-20` — a press inside the interval is **discarded**, not queued or deferred | specification | CR-40 |
+| 2 | `VAL-FUNC-13`, `VAL-SPIKE-01` item 4 — assert the absence of a *late* second event, not only an immediate one | validation | CR-40 |
+| 3 | `VAL-FUNC-24` — classifies the build into either permitted transaction pattern; `RCV-04` stays optional | validation | CR-43 |
+| 4 | `LEARN-04` — rewritten around sample counts: 5 at 20 Hz, 2 at 10 Hz, against `LEARN-06`'s five-sample predicate | specification | CR-42 |
+| 5 | `LEARN-04` — the zero-margin coupling of `CTRL-19`'s 250 ms to `LEARN-06`'s five samples, recorded so a later change cannot miss it | specification | audit 7 |
+| 6 | `MSP-08` — states that 250 ms guarantees `CTRL-18`'s two observations at 10 Hz under adverse phase | specification | CR-42 |
+| 7 | §3 — the `MSP-08` row rewritten to say what the 200 ms figure is | audit | CR-42 |
+| 8 | `VAL-REV-07` — the `PROD-03` gate names all three failure modes; `VAL-FAIL-26`/`VAL-FAIL-27` carry the Bluetooth-link member | validation | CR-41 |
+| 9 | CR-35 — rationale corrected in place; `PROD-03` is not `SAFE-06 ∧ RF-05` | ledger | CR-41 |
+| 10 | `VAL-FUNC-54` — `RES-01`…`RES-05` expanded to five explicit citations | validation | CR-45 |
+| 11 | `VAL-SPIKE-01`…`VAL-SPIKE-07` — every spike carries an explicit `**Verifies:**` line | validation | CR-45 |
+| 12 | Audit 6 — relation defined; **464 edges** = 406 table + 58 spike, under a stated unit | audit | CR-45 |
+| 13 | Audit 6 — all 464 read semantically; the 406 re-derived, the 58 read for the first time; **0 defects** | audit | CR-45 |
+| 14 | Audit 7 — re-run on the `CTRL-18`…`CTRL-23` ↔ `MSP-08` ↔ `LEARN-04`/`LEARN-06` cluster from first principles | audit | CR-42 |
+| 15 | §4a — the stale `absent from both` / `OPEN` paragraph deleted; its history stays in CR-24 | audit | CR-46 |
+| 16 | §4b — every pre-v1.6 figure marked as a dated snapshot | audit | CR-46 |
+| 17 | Compression rule §6.9 — the `110 of 414` lesson de-mixed from the 403-relation artifact | method | CR-46 |
+| 18 | Compression rule §6.9.1 — a relation count is a measurement: stated unit, no ellipsis, counter refuses rather than guesses | method | CR-45 |
+| 19 | `SETUP-11` — duplicated word removed | bookkeeping | CR-46 |
+| 20 | PRS provenance — each delta named; §5d is the freeze rule, not a delta | bookkeeping | CR-46 |
+| 21 | `CTRL-13` — no platform-evidence chain; **left OPEN** rather than cited without reading the tags | audit | CR-44 |
+
+**247 requirements, 203 validation cases, 38 platform facts, 464 relations.** Three requirements gained
+normative content (`CTRL-20`, `LEARN-04`, `MSP-08`); none was added or removed.
+
+### The two findings worth keeping
+
+**A case can be wrong by being right.** `CTRL-20` and `RCV-04` produced the same shape twice in one delta:
+a validation case that constrains **more** than its requirement. Every audit here checks entailment — does
+the requirement imply the case — and neither of these fails that test. What they fail is the reverse:
+**does the requirement admit an implementation the case rejects?** A deferred press satisfies `CTRL-20` as
+written and fails `VAL-FUNC-13`; a bracket-always build satisfies `RCV-04` and failed `VAL-FUNC-24`. One is
+repaired in the requirement and one in the case, and telling them apart is the judgement — but neither is
+visible while reading in the direction the audit was designed for.
+
+**A right rule can rest on a wrong reason indefinitely.** `LEARN-04`'s policy was correct from v1.4 and its
+stated justification was arithmetic that is off by a factor in both directions. Audit 7 passed over it
+twice and could not have caught it: consistency is a relation between requirements, and **a false
+computation inside a requirement contradicts nothing.** Prose that computes is a measurement wearing prose's
+clothes, and it is now regenerated like one.
+
+### What this delta does not claim
+
+That the artifacts are correct. 464 relations were read and none failed, which is a stronger result than any
+previous delta produced and is still one careful pass by one reader — v1.5 read 110 relations carefully and
+misjudged one of them. **The count is now reproducible, the membership is published, and the unit is stated;
+none of that makes a judgement right.** CR-44 is open, CR-11 is open by decision.
 
 ---
 
