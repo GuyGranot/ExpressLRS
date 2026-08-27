@@ -406,6 +406,45 @@ hardcodes ARM to bit 0 is correct only on a craft where ARM is the sole active b
 elsewhere, reading some other mode's bit as the arming interlock. That is the failure `FC-12`'s lookup
 exists to prevent, and recording only `permanentId = 0` without this correspondence would have invited it.
 
+### PF-BF-23 — `MSP_RC` command ID and response cardinality
+*Supports `CTRL-12`, `CTRL-13`, and `SAFE-03`'s `MSP_RC` row. **The cardinality rule is normative and is
+stated in the PRS.** Added 2026-08-27, closing CR-44 — a platform-dependent requirement that carried no
+platform fact. **One fact, both platforms**, following `PF-BF-04`: the behaviour is identical on each, so it
+is recorded once rather than split the way `PF-BF-02`/`PF-INAV-01` are for a value that differs.*
+
+[BF] `msp/msp_protocol.h:158-164` (definition at `:163`); `msp/msp.c:1209-1213`.
+[INAV] `msp/msp_protocol.h:209-216` (definition at `:215`); `fc/fc_msp.c:588-592`.
+
+Both pinned platforms define **`MSP_RC = 105`**, and both serialize the response as a bare sequence of U16
+channel values with **no count field, no header and no terminator**:
+
+```c
+/* [BF] msp/msp.c:1209-1213 */              /* [INAV] fc/fc_msp.c:588-592 */
+case MSP_RC:                                case MSP_RC:
+  for (int i = 0; i <                         for (int i = 0; i <
+       rxRuntimeState.channelCount; i++) {         rxRuntimeConfig.channelCount; i++) {
+    sbufWriteU16(dst, rcData[i]);               sbufWriteU16(dst, rxGetChannelValue(i));
+  }                                           }
+  break;                                      break;
+```
+
+**The payload is exactly `2 × channelCount` bytes, and the channel count appears nowhere inside it.** The
+only place the count survives is the MSP frame's own length field, so `channelCount = payloadLength / 2` is
+the sole available derivation. **A fixed count — 8, 16 or any other — is justified by neither
+implementation**, and a bridge assuming one either ignores a 16-channel receiver's upper AUX channels or
+reads past the end of an 8-channel one. `CTRL-13` carries the obligation this fact supports.
+
+**A difference that does not affect the cardinality result, recorded because it is easy to over-read:**
+Betaflight serializes `rcData[i]` while INAV calls `rxGetChannelValue(i)`. Both are FC-effective values and
+both loops run to the same bound, so the wire format is identical. It is corroborating colour for
+`CTRL-24`'s *FC-effective, not transmitter* framing rather than a second basis for it — that requirement's
+platform fact is `PF-INAV-03`, and citing this one there would create the decorative link CR-25 and CR-32
+exist to remove.
+
+---
+
+## 2. INAV platform facts
+
 ### PF-INAV-01 — `MSP_RTC` / `MSP_SET_RTC`
 See `PF-BF-02`; the two facts are one table.
 

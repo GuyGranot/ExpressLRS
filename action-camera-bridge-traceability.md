@@ -18,18 +18,19 @@ that should have been requirements and were not** (§4b, §5b, §6). The v1.1 de
 requirements and 192 cases; the v1.2 delta of §5b repaired the compression and took it to 246 requirements
 and 201 cases; the v1.3 delta of §5c took it to **247 requirements and 202 validation cases**; the v1.4
 delta of §5e amended six requirements and added none; the v1.5 delta of §5f added one validation case and
-one platform fact and amended `FC-12`. **All five deltas sit deliberately *outside* the equivalence claim**,
-which failed at the boundary and cannot be satisfied retroactively (§6).
+one platform fact and amended `FC-12`; the v1.6 delta of §5g amended three requirements; the v1.7 delta of
+§5h added one platform fact and amended two. **All seven deltas sit deliberately *outside* the equivalence
+claim**, which failed at the boundary and cannot be satisfied retroactively (§6).
 
 | Document | Words | Role |
 | --- | --- | --- |
-| PRS | 17,051 | the normative reading path |
-| Platform Evidence | 7,390 | why each requirement is correct at the pinned tags |
+| PRS | 17,206 | the normative reading path |
+| Platform Evidence | 7,713 | why each requirement is correct at the pinned tags |
 | Validation | 12,630 | how conformity is demonstrated |
-| Ledger (this file) | 20,085 | audit record |
+| Ledger (this file) | 21,299 | audit record |
 | Compression Rule | 4,268 | the method, amended by CR-01, audits 5b/6/7, and CR-23/24 |
 
-*(Word counts are **regenerated 2026-08-27** and are post-v1.6. At the compression boundary the PRS was
+*(Word counts are **regenerated 2026-08-27** and are post-v1.7. At the compression boundary the PRS was
 12,207 and Validation 9,377; after v1.1, 12,910 and 9,963; after v1.2, 15,413 and 11,022; after v1.3, 15,884
 and 11,615. The v1.2 freeze published four of these figures stale — this table is a measured block and is
 regenerated at every delta, §5d.)*
@@ -300,6 +301,7 @@ Every numeric value, threshold, count and boundary in the PRS, with the requirem
 | 100 ms OSD state-change latency | `OSD-18` | timing |
 | 1000 / 1500 / 2000 µs — explicitly **not** assumable | `LEARN-08` | negative bound |
 | channels 1–4 excluded | `CTRL-12` | scope |
+| `channelCount = payloadLength / 2`; no count field on the wire | `CTRL-13` | derivation |
 | 1 µs — explicitly meaningless | `CTRL-14` | negative bound |
 | `grace = max(failsafe_delay × 100 ms, 100 ms) + margin` | `RCV-08` | formula |
 | `margin = max(2 × poll period, 100 ms)` | `RCV-08` | formula |
@@ -381,6 +383,10 @@ of **4** predated `RES-09`, `PAIR-12` and the second `RES-03` row (CR-23).
 2. **Closures** — every *"no others"*, *"closed list"*, *"exhaustive"*, *"and nothing else"* and
    *"may contain only"* construction, likewise attributed and diffed. **Added in v1.4 after pass 1 alone was
    reported as a complete regeneration and was not** (CR-30); it surfaced the six above.
+3. **Derivations** — every rule that *determines* a quantity without stating one: a formula, a ratio, a
+   "derived from" relation. **Added in v1.7** after `CTRL-13` — *"the response length determines how many
+   channels are available"* — was found to be in neither of the first two passes (CR-47). It carries no
+   literal and closes no set, so both were blind to it, and it had been outside this table since v1.0.
 
 **This block is a measurement of the artifact and is regenerated at every delta** (§5d). **Both passes run,
 and the method is stated so that the next regeneration can be checked against §3's contract rather than
@@ -393,18 +399,18 @@ against the previous regeneration.**
 Mechanically verified over the whole set. **Figures below are post-delta**; the parenthesised value is the
 figure at the compression boundary, before §5a.
 
-**Regenerated 2026-08-27 against the v1.6 artifacts.**
+**Regenerated 2026-08-27 against the v1.7 artifacts.**
 
 ```
 requirements defined          247     (229 at the boundary · 234 after v1.1 · 246 after v1.2 ·
-                                       247 after v1.3; v1.4, v1.5 and v1.6 amended, added none)
+                                       247 after v1.3; v1.4-v1.7 amended, added none)
 duplicate definitions           0
 gaps in ID numbering            0
 dangling requirement refs       0     (all five artifacts)
 deontic statements in Evidence 12     (audit 5b: 0 new obligations)
-platform facts defined         38     (PF-BF-22 added in v1.5, closing CR-24)
+platform facts defined         39     (PF-BF-22 in v1.5 closing CR-24; PF-BF-23 in v1.7 closing CR-44)
 platform-dependent reqs with
-  no platform fact                1     CTRL-13 — CR-44, OPEN
+  no platform fact                0
 dangling platform-fact refs     0
 unreferenced platform facts     0
 validation cases              203     (124 FUNC · 59 FAIL · 13 REV · 7 SPIKE)
@@ -424,10 +430,11 @@ The requirement↔test relation is **many-to-many by design**: `VAL-FUNC-49` ver
 `LEARN-06`, and `RCV-08` is verified by seven cases. The audit asserts non-emptiness in both directions,
 not a bijection.
 
-**Platform-dependent requirements** each carry at least one `PF-*` reference at the pinned baseline —
-**with one exception, `CTRL-13`, recorded as CR-44 and open.** The list below is the set that does:
+**Platform-dependent requirements** each carry at least one `PF-*` reference at the pinned baseline, with
+**no exceptions** for the first time since this audit was written:
 `FC-05`…`FC-07`, `CTRL-14`…`CTRL-16`, `CTRL-24`, `CTRL-26`, `CTRL-27`, `RCV-02`…`RCV-19`, `OSD-01`,
-`OSD-07`…`OSD-09`, `SAFE-05`, `SAFE-07`, `SETUP-18`, `SETUP-19`, `INST-05`, `CAM-10`…`CAM-12`, **`FC-12`**
+`OSD-07`…`OSD-09`, `SAFE-05`, `SAFE-07`, `SETUP-18`, `SETUP-19`, `INST-05`, `CAM-10`…`CAM-12`, **`FC-12`**,
+**`CTRL-12`**, **`CTRL-13`**
 (added v1.5 — it had been platform-dependent with no platform fact behind it, which is what CR-24 was).
 
 **Unresolved platform assertions: 0.** Every `[BF]`/`[INAV]` claim in Evidence carries a file and line
@@ -480,20 +487,20 @@ passed the check CR-31 introduced while still not being fully checkable. **A tot
 not sufficient; every counted item must appear in a published enumeration.** Now that `FC-12` states the
 constant it is a §3 row and belongs to Group B (CR-37).
 
-**Group B — specified values, rules and closures: §3's boundary table, one input per row.** §3 publishes
-**66** rows. Three are not Group B inputs: two are already counted in Group A (`SAFE-05`'s `MSP_RTC` pair in
+**Group B — specified values, rules, closures and derivations: §3's boundary table, one input per row.**
+§3 publishes **67** rows. Three are not Group B inputs: two are already counted in Group A (`SAFE-05`'s `MSP_RTC` pair in
 A2, `SAFE-03`'s allowlist in A1) and one is a validation pass criterion rather than an implementation input
-(`VAL-SPIKE-02`'s formula). **Group B = 63**, the added row being `FC-12`'s ARM permanent ID and its
-status-bit correspondence.
+(`VAL-SPIKE-02`'s formula). **Group B = 64**; v1.5 added `FC-12`'s ARM permanent ID and its status-bit
+correspondence, and v1.7 added `CTRL-13`'s channel-count derivation.
 
 ```
 Group A                    76
-Group B                    63
+Group B                    64
                           ───
-conformance inputs        139      ← the two groups sum to it, and every item is in one of them
-present in the PRS        139
+conformance inputs        140      ← the two groups sum to it, and every item is in one of them
+present in the PRS        140
 evidence-only (defects)     0
-absent from both            0      ← CR-24 closed in v1.5
+absent from both            0      ← CR-24 closed in v1.5; CR-44 closed in v1.7
 ```
 
 **The total moved from 114 to 139 because the unit changed, not because inputs were added.** The earlier
@@ -508,8 +515,7 @@ and `MSP_RESULT_ERROR` are likewise rationale — the first for `VAL-SPIKE-06`'s
 why `OSD-08` fixes 28 bytes — and neither is consumed by the bridge.
 
 **Answer to the audit's question — *can an implementation be written correctly without retrieving any
-additional semantic fact from Evidence?* — is now yes for all 139 inputs**, for the first time since this
-audit was written. Evidence carries citations, derivations and rationale, and originates nothing.
+additional semantic fact from Evidence?* — is yes for all 140 inputs.** Evidence carries citations, derivations and rationale, and originates nothing.
 
 ---
 
@@ -1129,7 +1135,7 @@ Same shape as CR-40 and found in the same pass. The case now classifies the buil
 pattern and fails only the third: a transition-bearing poll carrying two transactions, which is `RCV-03`
 violated under `RCV-04`'s cover.
 
-### CR-44 — `CTRL-13` has no platform-evidence chain · **OPEN**
+### CR-44 — `CTRL-13` has no platform-evidence chain · **CLOSED in v1.7**
 
 `CTRL-13` requires channel count to come from the `MSP_RC` **response length** rather than a constant. That is
 a claim about what both firmwares serialize, and it carries **no `PF-*` reference** — while §4 asserts that
@@ -1142,11 +1148,61 @@ reserved ID reads as a citation and would dangle — covering `MSP_RC = 105` at 
 serializing `rcData[0..channelCount-1]`, INAV serializing `rxGetChannelValue(0..channelCount-1)`, and the
 conclusion that response payload cardinality derives from FC channel count.
 
-**Not written here.** The serializer locations have not been read at `2025.12.5` and `8.0.1`, and §4's
-*"Unresolved platform assertions: 0"* is only true because no platform claim in Evidence lacks a file and
-line. **Adding one without them would make that figure false to close a gap in the figure next to it.**
-This is CR-24's discipline applied a second time, and CR-24 is the argument for it: waiting produced a fact
-whose *correspondence* half mattered more than the constant, and a guess would have missed it.
+**It was not written when this was raised**, because the serializer locations had not been read at
+`2025.12.5` and `8.0.1`, and §4's *"Unresolved platform assertions: 0"* is only true while no platform claim
+in Evidence lacks a file and line. Adding one without them would have made that figure false in order to
+close the gap in the figure beside it.
+
+**Closed in v1.7 from the pinned tags** as `PF-BF-23` — one fact covering both platforms, following
+`PF-BF-04` rather than the split `PF-BF-02`/`PF-INAV-01` pattern, because the behaviour is identical on each
+and only differing values justify splitting.
+
+**Waiting paid a second time, for a different reason than CR-24.** The fact is not *"`MSP_RC` is 105"* — that
+was already in `SAFE-03`. It is that both platforms emit `2 × channelCount` bytes **with the count encoded
+nowhere in the payload**, so the frame length is the only carrier and `channelCount = payloadLength / 2` is
+the sole derivation. `CTRL-13` had asserted the conclusion for six versions with nothing behind it, and the
+conclusion is only as good as that absence-of-a-count-field observation.
+
+**Two things in the proposed wording were changed.** The suggested fact ended *"the bridge **shall** derive
+the available channel count from the received payload length"* — a normative obligation in Evidence, which is
+the CR-01 defect the §4 deontic scan exists to catch, and `CTRL-13` already carries it. The fact states the
+wire format and stops; the scan still reports 12. And the observation that Betaflight reads `rcData[i]`
+while INAV calls `rxGetChannelValue(i)` is recorded **without** adding a `CTRL-24` citation: it corroborates
+that requirement's framing but `PF-INAV-03` is its basis, and a second citation there would be decorative in
+exactly the way CR-25 and CR-32 describe.
+
+### CR-47 — audit 3 was blind to derivations · **CLOSED in v1.7**
+
+Closing CR-44 exposed it. §3's contract covers *"every numeric value, threshold, count and boundary"*, and
+its regeneration ran two passes: literals carrying units (CR-30's original), and closed enumerations (CR-30's
+addition). **`CTRL-13` is neither.** *"The response length determines how many channels are available"*
+states no literal and closes no set — it is a **derivation**, a rule that fixes a quantity by relating it to
+another — so both passes were structurally blind to it, and it had been outside the boundary table since
+v1.0 without anyone noticing.
+
+A third pass now looks for formulas, ratios and derived-from relations. It found `CTRL-13`; the derivations
+already in the table — `RCV-08`'s `grace`, `RCV-10`'s per-transaction extension — were there because they
+carry units and pass 1 caught them incidentally.
+
+**The rule this produces, and it is CR-30's generalised:** a regeneration method is validated against the
+block's *contract*, and a contract phrased as a list of examples ("value, threshold, count, boundary")
+invites a method that matches the examples rather than the category. **Where a block's scope is a category,
+the method states how it enumerates the category** — not which shapes of it the author happened to think of.
+
+### CR-48 — a section heading was deleted by an anchor-based edit · **CLOSED in v1.7**
+
+v1.5's `PF-BF-22` insertion replaced an anchor ending `--- ## 2. INAV platform facts` with text that did not
+restore it. **Every INAV platform fact has been sitting under `## 1. Betaflight platform facts` for two
+deltas**, and nothing caught it: the structural verifier checks IDs, references, fences and table shape, and
+does not check that a document's own section structure survives an edit.
+
+Restored in v1.7. **The class matters more than the instance:** an edit anchored on `old → new` deletes
+whatever was inside the anchor and not reproduced in the replacement, silently and without breaking any ID.
+Three audits and a verifier passed over it, because all of them read the parts and none reads the skeleton.
+The verifier now has one more thing it should check, and until it does, **an anchor that spans a heading is
+re-read after replacement** rather than assumed.
+
+
 
 ### CR-45 — the relation count had no unit, and the spikes were outside it · **CLOSED in v1.6**
 
@@ -1652,6 +1708,54 @@ That the artifacts are correct. 464 relations were read and none failed, which i
 previous delta produced and is still one careful pass by one reader — v1.5 read 110 relations carefully and
 misjudged one of them. **The count is now reproducible, the membership is published, and the unit is stated;
 none of that makes a judgement right.** CR-44 is open, CR-11 is open by decision.
+
+---
+
+## 5h. v1.7 delta — applied 2026-08-27
+
+**What triggered it.** The Betaflight and INAV serializer locations, read at the pinned tags and supplied by
+external review, closing the last open finding that was open for want of a fact rather than a decision.
+
+| # | Change | Kind | CR |
+| --- | --- | --- | --- |
+| 1 | `PF-BF-23` — `MSP_RC = 105` on both platforms; both serialize one U16 per `channelCount` with no count field | evidence | CR-44 |
+| 2 | `CTRL-13` — states `channelCount = payloadLength / 2` and cites the fact | specification | CR-44 |
+| 3 | `CTRL-12` — cites the fact for the shared `105` | specification | CR-44 |
+| 4 | The proposed fact's closing `shall` **not** carried into Evidence; obligation stays in `CTRL-13` | evidence | CR-44 |
+| 5 | The `rcData` / `rxGetChannelValue` difference recorded **without** a `CTRL-24` citation | evidence | CR-44 |
+| 6 | §3 — `CTRL-13`'s derivation added; a third regeneration pass for derivations | audit | CR-47 |
+| 7 | §4a — Group B 63 → 64; conformance inputs **140/140** | audit | CR-47 |
+| 8 | §4 — platform-dependent requirements now have **no** exceptions; `CTRL-12`, `CTRL-13` added to the list | audit | CR-44 |
+| 9 | Evidence — `## 2. INAV platform facts` heading restored after two deltas without it | structure | CR-48 |
+
+**247 requirements, 203 validation cases, 39 platform facts, 464 relations.** No requirement, case or
+relation was added or removed; `CTRL-12` and `CTRL-13` gained content.
+
+### What closing this cost, and what it bought
+
+**Held open for two deltas, and the delay earned its keep twice.** CR-24 waited and produced a
+correspondence more important than the constant. CR-44 waited and produced an *absence* — no count field
+anywhere in the payload — which is the whole basis for `CTRL-13` and is not visible from the value `105`
+that the review's first sentence supplied. **A fact recorded from memory would have contained the number and
+missed the reason.**
+
+**Both edits to the proposed wording were about which document holds what.** A `shall` in Evidence and a
+citation on a requirement that already had its basis are small things individually; they are the two defect
+classes this ledger has spent five deltas removing, and they arrived together inside a correct and welcome
+contribution. **The discipline is not suspicious of the content — it is indifferent to where the content
+came from**, which is the only form of it that works.
+
+### The finding neither side was looking for
+
+`CTRL-13` was outside the boundary table for **seven versions**, and closing its evidence gap is what
+surfaced it (CR-47). Audit 3's two passes look for literals and for closures; a derivation is neither. The
+generalisation is uncomfortable and worth stating: **a contract phrased as examples produces a method that
+matches the examples.** §3 says *"value, threshold, count and boundary"*, and two regenerations built exactly
+those two matchers.
+
+And `PF-BF-22`'s insertion had silently deleted a section heading in v1.5 (CR-48). **Three audits and a
+structural verifier ran over that document twice without noticing**, because every one of them reads the
+parts and none reads the skeleton.
 
 ---
 

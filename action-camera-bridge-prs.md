@@ -1,6 +1,6 @@
 # Action Camera Bridge — Product Requirements Specification
 
-**Status:** **v1.6 — audited baseline, 2026-08-27.** 247 requirements, 203 validation cases, 38 platform
+**Status:** **v1.7 — audited baseline, 2026-08-27.** 247 requirements, 203 validation cases, 39 platform
 facts, **464 case↔requirement relations** under the unit defined in Ledger §4b.
 
 **Audit status is stated per audit, because it differs per audit.** v1.3 claimed seven audits re-run when
@@ -11,13 +11,17 @@ by an undefined counting unit (CR-26, CR-38, CR-45).
 | --- | --- |
 | 1 · requirement-equivalence | **historical.** Scoped to the compression boundary, a past event; not re-runnable, and §1's dispositions are the record |
 | 2 · reverse | **historical**, same scope |
-| 3 · boundary-value | **re-run, clean** |
-| 4 · traceability | **re-run; one open item, CR-44** — `CTRL-13` is platform-dependent and carries no platform fact. Everything else chains |
-| 5 · conformance-input | **re-run, clean. 139/139** — no input absent or Evidence-only (CR-24, CR-37) |
+| 3 · boundary-value | **re-run, clean.** A third regeneration pass added in v1.7 for *derivations* — rules that fix a quantity without stating one, which the literal and closure passes were both blind to (CR-47) |
+| 4 · traceability | **re-run, clean.** Every platform-dependent requirement carries a platform fact, with **no exceptions**, for the first time since this audit existed (CR-44) |
+| 5 · conformance-input | **re-run, clean. 140/140** — no input absent or Evidence-only (CR-24, CR-37, CR-44) |
 | 6 · validation-entailment | **re-run over a defined edge set for the first time: all 464 relations read, 0 defects.** v1.5's 403 was a token count that missed a range and every spike (CR-45) |
 | 7 · internal-consistency | **re-run, clean**, including the `CTRL-18`…`CTRL-23` ↔ `MSP-08` ↔ `LEARN-04`/`LEARN-06` cluster re-derived from first principles (CR-42) |
 
-**Open: CR-44** (above) and **CR-11** by decision.
+**Open: CR-11 only, by decision.** Every finding raised against these artifacts is closed.
+
+**One structural defect worth knowing about, because nothing mechanical caught it:** v1.5 deleted Evidence's
+`## 2. INAV platform facts` heading through an anchored edit, and every INAV fact sat under the Betaflight
+heading for two deltas. Restored, and the verifier now checks section numbering (CR-48).
 
 **What this claims, and what it does not.** Every relation was read and none failed — a stronger result than
 any earlier delta, and still one careful pass by one reader. v1.5 read 110 relations carefully and misjudged
@@ -31,9 +35,9 @@ Subsequent findings — including Osmo Nano / DUML results — land as a new del
 **Historical ledger blocks are not edited in place; measured blocks are regenerated at every delta** (§5d).
 Compressed from PRS v1.0 (`action-camera-bridge-prs-source-v1.0.md`,
 sha256 `e6178686acfa71e932784cf44041a988f9d72e8ff64162c89588bce8a700b473`) under the compression rule
-of 2026-08-26, **plus the separately reviewed v1.1, v1.2, v1.3, v1.4, v1.5 and v1.6 deltas, recorded in
-Traceability Ledger §5a, §5b, §5c, §5e, §5f and §5g respectively.** *(§5d is the freeze rule, not a delta —
-which is why the range shorthand this replaced was wrong.)* **No requirement change was intended at the compression boundary; seven
+of 2026-08-26, **plus the separately reviewed v1.1, v1.2, v1.3, v1.4, v1.5, v1.6 and v1.7 deltas, recorded
+in Traceability Ledger §5a, §5b, §5c, §5e, §5f, §5g and §5h respectively.** *(§5d is the freeze rule, not a
+delta — which is why the range shorthand this replaced was wrong.)* **No requirement change was intended at the compression boundary; seven
 source obligations were nevertheless lost there** (Ledger §6, which records the acceptance criterion as
 NOT MET). The deltas since have changed requirements deliberately, and each change is itemised. Every
 disposition is recorded in the Ledger.
@@ -389,11 +393,17 @@ participate in this arbitration.
 
 ### 4.2 Reading RC values
 
-**CTRL-12.** The bridge reads FC-effective RC values using `MSP_RC` on both platforms. **Only AUX
-channels are accepted as camera-control inputs; channels 1–4 are out of scope for control mapping.**
+**CTRL-12.** The bridge reads FC-effective RC values using `MSP_RC` on both platforms — **105 on each**
+(`PF-BF-23`). **Only AUX channels are accepted as camera-control inputs; channels 1–4 are out of scope for
+control mapping.**
 
 **CTRL-13.** The **response length**, not a hard-coded channel count, determines how many channels are
-available.
+available: **`channelCount = payloadLength / 2`** (`PF-BF-23`).
+
+Both platforms serialize `MSP_RC` as a bare sequence of U16 channel values with **no count field**, so the
+frame's own length is the only carrier of the count. **A fixed count is justified by neither
+implementation** — assuming one ignores a 16-channel receiver's upper AUX channels or reads past the end of
+an 8-channel one (v1.7, CR-44).
 
 **CTRL-14.** No operational meaning shall be placed on a single-microsecond boundary (`PF-BF-06`).
 
