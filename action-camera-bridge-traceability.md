@@ -536,12 +536,12 @@ either** — no `X-01`…`X-05` range, no `X-*` wildcard — and the counting sc
 if it finds one, rather than counting the shorthand as the two IDs it mentions.
 
 ```
-current, regenerated 2026-08-27 from the v1.9 artifacts
+current, regenerated 2026-08-27 from the v1.10 artifacts
 
-  table-case relations        423      202 cases
+  table-case relations        429      204 cases
   spike relations              72        7 cases
                              ────
-  total                       495      209 cases; every case carries at least one
+  total                       501      211 cases; every case carries at least one
 
   spike Verifies lines are derived from pass criteria, not authored (CR-49).
   12 requirement mentions remain in spike bodies with no edge, each adjudicated
@@ -2357,6 +2357,72 @@ dangling refs, coverage per hazard, entailment between requirements. This defect
 because every requirement involved was well-formed, referenced, covered and internally consistent. It is
 only visible from the question an implementer is forced to ask and a reader is not: *after this function
 returns, what is left in that struct?*
+
+`CR-52` remains the only open change record, and remains release-blocking.
+
+### CR-58 — `epoch` was carried in every sample and read by nothing · **CLOSED in v1.10**
+
+`ControlSample` has carried `{values, valid, epoch}` since the seam was drawn, and `RCV-14` makes the
+epoch meaningful: every re-qualification is a re-baseline boundary. But `RCV-14` speaks only to **level
+control reconciliation**, and it was the only requirement that mentioned the field. Nothing said what an
+epoch change meant to the two consumers whose predicates are **multi-sample claims**.
+
+| Predicate | Requirement | Spans a discontinuity? |
+| --- | --- | --- |
+| median of 5 qualified samples | `LEARN-06` | **yes, before this** |
+| moved for 2 consecutive qualified samples | `LEARN-06` | **yes** |
+| stable over 5 consecutive qualified samples | `LEARN-06` | **yes** |
+| four confirmed transitions | `SETUP-12` | **yes** |
+
+So `qualified, qualified, re-qualification, qualified, qualified, qualified` satisfied a five-sample
+predicate over observations that never formed one continuous stream. `SETUP-13` resets recognition on
+RC-validity **loss**, which catches the case only when the recogniser happens to observe the unqualified
+sample itself — the epoch is how the adapter *reports* the discontinuity, and it is the robust signal.
+
+**`RCV-20` states the rule once** — all multi-sample interpretations are contained within one epoch;
+transient state derived from prior samples is discarded before the new epoch's first qualified sample is
+consumed; **time bounds belonging to the enclosing operation are not restarted.** `SETUP-13`, `LEARN-06`
+and `LEARN-17` specialise it rather than restating it.
+
+**Discarding the evidence is not abandoning the operation**, and the existing failure semantics are what
+decided that. `VAL-FAIL-56` already fixes the outcome of validity loss during learning as *reaches the
+timeout, changes no configuration* — not *cancels*. Treating an epoch change as a cancel would have
+strengthened the contract beyond what any requirement asked and made a short transient dropout destroy a
+user operation. The unconfirmed proposal is the one piece of transient state that is discarded even
+though it looks like a result: committing it would commit a mapping from a stream that no longer exists.
+
+**The unrestarted deadline is the load-bearing half.** A `LEARN-17` timeout that restarted on
+re-qualification would make a bounded acquisition unbounded under repeated link interruptions — the
+failure mode is a setup page that never terminates on a marginal link.
+
+**Implementing it found a second defect.** `LEARN-17`'s timeout was only reachable from the *acquiring*
+state, so an operation whose input never qualified sat in baselining forever. `VAL-FAIL-57` runs exactly
+that case — learning attempted with the transmitter off — and expects an end. The timeout now bounds the
+operation rather than its second half. **This is the second time in two deltas that implementing a
+requirement literally found a hole an audit did not** (`CR-57`).
+
+| | before | after |
+| --- | --- | --- |
+| requirements | 251 | **252** |
+| validation cases | 209 | **211** |
+| relations | 495 | **501** |
+
+---
+
+## 5k. v1.10 delta — applied 2026-08-27
+
+**What triggered it.** A review finding that neither new phase-1 control consumer read `ControlSample.epoch`.
+
+| # | Change | Kind | CR |
+| --- | --- | --- | --- |
+| 1 | `RCV-20` — the qualification epoch bounds every multi-sample interpretation | specification | CR-58 |
+| 2 | `SETUP-13` — an epoch change has the same effect as RC-validity loss; the window does not restart | specification | CR-58 |
+| 3 | `LEARN-06` — baseline, runs, windows, candidate state and any unconfirmed proposal do not span epochs | specification | CR-58 |
+| 4 | `LEARN-17` — the acquisition timeout is anchored to operation start | specification | CR-58 |
+| 5 | `VAL-FUNC-126`, `VAL-FUNC-127` added — the gesture and the learner across a discontinuity | validation | CR-58 |
+
+**252 requirements, 211 validation cases, 39 platform facts, 501 relations.** One requirement added, three
+amended in place; none removed.
 
 `CR-52` remains the only open change record, and remains release-blocking.
 

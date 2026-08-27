@@ -671,6 +671,26 @@ event.** This applies identically to **every** qualification and re-qualificatio
 recovery from an RX-loss freeze, bridge reboot, FC reboot, and confirmation of a newly learned mapping
 (`LEARN-11`). It is one rule; it shall not be implemented as several.
 
+**RCV-20 — the qualification epoch bounds every multi-sample interpretation.** A control sample carries
+the epoch of the qualification it belongs to, and that epoch changes on every one of `RCV-14`'s
+re-baseline paths. **All multi-sample control interpretations shall be contained within one epoch.** On
+an epoch change, transient state derived from prior samples shall be discarded before the new epoch's
+first qualified sample is consumed. **Time bounds belonging to the enclosing operation are not
+restarted.**
+
+*"Consecutive qualified samples" therefore means consecutive within one epoch.* Without this, the
+sequence `qualified, qualified, re-qualification, qualified, qualified, qualified` satisfies a
+five-sample predicate over observations that never formed one continuous stream. The epoch is how the
+adapter **reports** a discontinuity, so a consumer that never sees an unqualified sample still honours
+it — which is what makes the rule robust rather than dependent on the shape of the interruption.
+
+**Discarding the evidence is not abandoning the operation.** `VAL-FAIL-56` already fixes the outcome of
+validity loss during learning: the operation runs to its timeout and changes no configuration. It does
+not end at the discontinuity, and a short transient shall not behave as a cancel. The enclosing
+operation survives; only what was inferred from the old stream does not. **The unrestarted time bound is
+the load-bearing half** — a deadline that restarted on re-qualification would make a bounded operation
+unbounded under repeated link interruptions.
+
 ### 5.4 INAV — runtime validity
 
 **RCV-16.** INAV freezes *values* rather than substituting them (`PF-INAV-05`), so **no separate INAV
@@ -1250,7 +1270,11 @@ The pattern ends where it began, so a control left displaced cannot complete it.
 **samples, not milliseconds**, so it scales with whatever rate `MSP-01` is running.
 
 **SETUP-13.** Recognition shall reset on RC-validity loss, on an out-of-pattern transition, on the FC
-arming, on pattern-timer expiry, and on window expiry.
+arming, on pattern-timer expiry, and on window expiry. **An epoch change has the same effect as
+RC-validity loss** (`RCV-20`), and the first qualified sample of the new epoch establishes the
+recogniser's baseline afresh. `SETUP-10`'s 15 s window stays open and its original expiry does not
+restart — a gesture may not bridge a qualification discontinuity, but the user's window is not shortened
+by one either.
 
 **SETUP-14.** **The window shall be visible.** While it is open the bridge shall display `SETUP GESTURE`
 in its owned primary OSD slot, and `SETUP n/4` as transitions register, returning to normal camera
@@ -1437,6 +1461,13 @@ These thresholds are **not** `CTRL-15`'s hysteresis and shall not be conflated w
 whether a *configured* range is currently active at runtime; 100 µs decides whether a channel was
 *deliberately exercised* during setup.
 
+**Every *"consecutive qualified samples"* above is bounded by `RCV-20`'s epoch.** Baseline, movement
+runs, stability windows, ambiguity and candidate state, **and any proposal the user has not yet
+confirmed**, shall not span epochs. The unconfirmed proposal is included deliberately: a mapping
+committed after a re-qualification would be committed from observations belonging to a control stream
+that no longer exists, and since confirmation is cheap and learning is setup-only, a fresh demonstration
+is the cleaner boundary. Acquisition may resume from a fresh baseline in the new epoch (`LEARN-17`).
+
 **LEARN-07 — three distinct rejections.** They tell the user to do different things and **shall not be
 collapsed into a single failure**:
 
@@ -1450,7 +1481,9 @@ Where the operation is ambiguous **the bridge shall not guess** — not by large
 channel index, not by first to cross the threshold.
 
 **LEARN-17.** On acquisition-timeout expiry the operation shall return to idle, **change no
-configuration**, and revert polling to `MSP-01` policy.
+configuration**, and revert polling to `MSP-01` policy. The timeout is measured from operation start and
+**is not restarted by an epoch change** (`RCV-20`), so repeated link interruptions cannot extend a
+bounded acquisition.
 
 **LEARN-18 — abandonment is the same outcome as timeout.** A learning operation ends without changing
 configuration when it times out (`LEARN-17`), **and equally when the client disconnects, the page is closed,
